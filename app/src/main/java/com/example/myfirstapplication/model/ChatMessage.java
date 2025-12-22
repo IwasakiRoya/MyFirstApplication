@@ -1,6 +1,7 @@
 package com.example.myfirstapplication.model;
 
 import androidx.room.Entity;
+import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
 @Entity(tableName = "messages") // Room数据库表名
@@ -23,10 +24,11 @@ public class ChatMessage {
     public final static int STATUS_THINKING = 1;  // AI思考中
     public final static int STATUS_FAILED = 2;    // 失败
 
-    // 无参构造方法（Room必须）
+    // 无参构造方法（Room必须，核心构造）
     public ChatMessage() {}
 
-    // 有参构造方法（适配Service中的saveToDb调用）
+    // 有参构造方法（业务使用，添加@Ignore让Room忽略）
+    @Ignore // 关键：添加这个注解消除警告
     public ChatMessage(String friendId, String content, int type, int status) {
         this.friendId = friendId;
         this.content = content;
