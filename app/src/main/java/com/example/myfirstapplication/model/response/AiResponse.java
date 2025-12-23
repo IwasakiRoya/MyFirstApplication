@@ -2,9 +2,6 @@ package com.example.myfirstapplication.model.response;
 
 import java.util.List;
 
-import lombok.Data;
-
-@Data
 public class AiResponse {
     public List<Choice> choices;
 

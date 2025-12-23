@@ -2,6 +2,7 @@ package com.example.myfirstapplication.model;
 
 import androidx.annotation.NonNull; // 必须导入这个包
 import androidx.room.Entity;
+import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
 import lombok.Data;
@@ -24,6 +25,7 @@ public class ChatReadPosition {
     }
 
     // 有参构造（方便业务使用）
+    @Ignore
     public ChatReadPosition(@NonNull String friendId, int lastReadMsgId, long lastReadTime) {
         this.friendId = friendId;
         this.lastReadMsgId = lastReadMsgId;

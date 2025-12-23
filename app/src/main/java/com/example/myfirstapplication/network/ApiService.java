@@ -43,6 +43,18 @@ public interface ApiService {
      *   ]
      * }
      */
+    // ========== 新增：拉取未读消息接口 ==========
+    /**
+     * 从服务器拉取指定时间后的未读消息
+     * @param authorization 鉴权Token（Bearer + token）
+     * @param lastTimestamp 最后一次同步时间戳（增量拉取）
+     * @return 包含未读消息列表的BaseResponse
+     */
+    @GET("messages/unread") // 替换为你后端实际的接口路径
+    Call<BaseResponse<List<ChatMessage>>> getUnreadMessages(
+            @Header("Authorization") String authorization,
+            @Query("lastTimestamp") long lastTimestamp
+    );
 
 
     @POST("v1/chat/completions") // 注意路径，DeepSeek/OpenAI 通常是这个
