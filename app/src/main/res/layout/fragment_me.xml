@@ -9,6 +9,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
+        <!-- 1. 个人信息头部（含编辑按钮） -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="120dp"
@@ -16,22 +17,26 @@
             android:padding="20dp"
             android:layout_marginBottom="10dp">
 
+            <!-- 头像 -->
             <ImageView
-                android:id="@+id/me_avatar"
+                android:id="@+id/iv_avatar"
                 android:layout_width="64dp"
                 android:layout_height="64dp"
-                android:src="@mipmap/ic_launcher_round" />
+                android:src="@mipmap/ic_launcher_round"
+                android:scaleType="centerCrop"
+                android:clickable="true"/>
 
+            <!-- 昵称/账号 -->
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_toRightOf="@id/me_avatar"
+                android:layout_toEndOf="@id/iv_avatar"
                 android:layout_centerVertical="true"
-                android:layout_marginLeft="15dp"
+                android:layout_marginStart="15dp"
                 android:orientation="vertical">
 
                 <TextView
-                    android:id="@+id/me_nickname"
+                    android:id="@+id/tv_nickname"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="未登录用户"
@@ -39,19 +44,75 @@
                     android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/me_username"
+                    android:id="@+id/tv_user_id"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="微信号：admin"
+                    android:text="ID：1000"
                     android:textColor="#888888" />
             </LinearLayout>
+
+            <!-- 编辑按钮（右上角） -->
+            <TextView
+                android:id="@+id/tv_edit_info"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:text="编辑"
+                android:textColor="#2196F3"
+                android:textSize="14sp"
+                android:clickable="true"/>
         </RelativeLayout>
 
+        <!-- 2. 个人信息编辑区（默认隐藏，点击编辑后显示） -->
+        <LinearLayout
+            android:id="@+id/ll_info_editor"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF"
+            android:orientation="vertical"
+            android:padding="15dp"
+            android:layout_marginBottom="10dp"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/et_nickname"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="输入昵称"
+                android:textSize="14sp"/>
+
+            <EditText
+                android:id="@+id/et_signature"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="输入个性签名"
+                android:textSize="14sp"
+                android:layout_marginTop="10dp"/>
+
+            <EditText
+                android:id="@+id/et_phone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="输入手机号"
+                android:inputType="phone"
+                android:textSize="14sp"
+                android:layout_marginTop="10dp"/>
+
+            <Button
+                android:id="@+id/btn_save_info"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="保存个人信息"
+                android:layout_marginTop="10dp"/>
+        </LinearLayout>
+
+        <!-- 3. AI托管配置区（独立模块） -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="大模型设置 (帮我聊核心)"
-            android:layout_marginLeft="15dp"
+            android:text="AI托管设置"
+            android:layout_marginStart="15dp"
             android:layout_marginBottom="5dp"
             android:textColor="#888888" />
 
@@ -60,38 +121,86 @@
             android:layout_height="wrap_content"
             android:background="#FFFFFF"
             android:orientation="vertical"
-            android:padding="15dp">
+            android:padding="15dp"
+            android:layout_marginBottom="10dp">
 
+            <!-- API Key -->
             <EditText
                 android:id="@+id/et_api_key"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="输入 API Key"
-                android:textSize="14sp" />
+                android:hint="输入硅基流动API Key"
+                android:textSize="14sp"/>
 
-            <EditText
-                android:id="@+id/et_ai_style"
+            <!-- AI模型下拉选择 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="选择AI模型"
+                android:textSize="14sp"
+                android:layout_marginTop="10dp"
+                android:textColor="#666666"/>
+
+            <Spinner
+                android:id="@+id/sp_ai_model"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="定义个人聊天风格 (如: 热情、高冷)"
+                android:layout_marginTop="5dp"
+                android:background="#F9F9F9"/>
+
+            <!-- AI人设Prompt -->
+            <EditText
+                android:id="@+id/et_ai_prompt"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="定义AI人设（如：毒舌但心软的朋友）"
                 android:textSize="14sp"
                 android:layout_marginTop="10dp"/>
 
             <Button
-                android:id="@+id/btn_save_config"
+                android:id="@+id/btn_save_ai_config"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="保存 AI 配置"
-                android:layout_marginTop="10dp" />
+                android:text="保存AI配置"
+                android:layout_marginTop="10dp"/>
         </LinearLayout>
 
-        <Button
-            android:id="@+id/btn_logout"
+        <!-- 4. 账户操作区 -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_margin="20dp"
-            android:text="退出登录"
-            android:backgroundTint="#FF4444" />
+            android:background="#FFFFFF"
+            android:orientation="vertical"
+            android:layout_marginBottom="10dp">
+
+            <!-- 修改密码 -->
+            <TextView
+                android:id="@+id/tv_change_pwd"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:text="修改密码"
+                android:gravity="center_vertical"
+                android:paddingStart="15dp"
+                android:textSize="16sp"
+                android:clickable="true"/>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#EEEEEE"/>
+
+            <!-- 退出登录 -->
+            <TextView
+                android:id="@+id/tv_logout"
+                android:layout_width="match_parent"
+                android:layout_height="50dp"
+                android:text="退出登录"
+                android:gravity="center_vertical"
+                android:paddingStart="15dp"
+                android:textSize="16sp"
+                android:textColor="#FF4444"
+                android:clickable="true"/>
+        </LinearLayout>
 
     </LinearLayout>
 </ScrollView>

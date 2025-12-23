@@ -62,4 +62,9 @@ dependencies {
     annotationProcessor("androidx.room:room-compiler:2.6.1")
     // 可选：Room 数据绑定（如果需要）
     implementation("androidx.room:room-ktx:2.6.1")
+
+    // Lombok核心库
+    implementation("org.projectlombok:lombok:1.18.30")
+    // 注解处理器（Java项目）
+    annotationProcessor("org.projectlombok:lombok:1.18.30")
 }

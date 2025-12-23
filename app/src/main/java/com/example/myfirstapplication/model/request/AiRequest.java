@@ -1,8 +1,11 @@
-package com.example.myfirstapplication.model;
+package com.example.myfirstapplication.model.request;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import lombok.Data;
+
+@Data
 public class AiRequest {
     public String model = "deepseek-chat"; // 或其他模型名
     public List<Message> messages;

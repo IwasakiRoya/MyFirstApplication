@@ -16,20 +16,33 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyFirstApplication">
+
+        <!-- 登录页（已有，正确） -->
         <activity
-            android:name=".ChatActivity"
-            android:exported="false" />
-        <activity
-            android:name=".LoginActivity"
+            android:name=".activity.LoginActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 修复1：添加 RegisterActivity 声明（缺失的核心） -->
         <activity
-            android:name=".MainActivity"
+            android:name=".activity.RegisterActivity"
+            android:exported="true"/>
+
+        <!-- 修复2：给 FriendRequestActivity 补充 exported 属性（Android 12+ 强制） -->
+        <activity
+            android:name=".activity.FriendRequestActivity"
+            android:exported="true"/>
+
+        <!-- 已有 Activity（保持不变） -->
+        <activity
+            android:name=".activity.ChatActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activity.MainActivity"
             android:exported="false" />
     </application>
 

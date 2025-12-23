@@ -4,6 +4,9 @@ import androidx.room.Entity;
 import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
+import lombok.Data;
+
+@Data
 @Entity(tableName = "messages") // Room数据库表名
 public class ChatMessage {
     // 主键（自动生成）
@@ -35,54 +38,5 @@ public class ChatMessage {
         this.type = type;
         this.status = status;
         this.timestamp = System.currentTimeMillis(); // 自动生成时间戳
-    }
-
-    // ========== Getter/Setter（Room必须，适配数据读写） ==========
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        this.id = id;
-    }
-
-    public String getFriendId() {
-        return friendId;
-    }
-
-    public void setFriendId(String friendId) {
-        this.friendId = friendId;
-    }
-
-    public String getContent() {
-        return content;
-    }
-
-    public void setContent(String content) {
-        this.content = content;
-    }
-
-    public int getType() {
-        return type;
-    }
-
-    public void setType(int type) {
-        this.type = type;
-    }
-
-    public long getTimestamp() {
-        return timestamp;
-    }
-
-    public void setTimestamp(long timestamp) {
-        this.timestamp = timestamp;
-    }
-
-    public int getStatus() {
-        return status;
-    }
-
-    public void setStatus(int status) {
-        this.status = status;
     }
 }

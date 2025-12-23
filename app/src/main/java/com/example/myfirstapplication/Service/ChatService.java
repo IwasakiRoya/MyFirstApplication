@@ -15,11 +15,13 @@ import android.os.Looper;
 import androidx.annotation.Nullable;
 
 import com.example.myfirstapplication.database.AppDatabase; // 导入你之前写的AppDatabase
-import com.example.myfirstapplication.model.AiRequest;
-import com.example.myfirstapplication.model.AiResponse;
+import com.example.myfirstapplication.model.request.AiRequest;
+import com.example.myfirstapplication.model.response.AiResponse;
 import com.example.myfirstapplication.model.ChatMessage;
+import com.example.myfirstapplication.model.response.BaseResponse;
 import com.example.myfirstapplication.network.ApiService; // 假设你有这个网络服务类
 
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -32,6 +34,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
 public class ChatService extends Service {
     private ApiService apiService; // 网络请求服务
     private Handler mainHandler;   // 主线程处理器（更新UI用）
+    private final AppDatabase db = AppDatabase.getInstance(this);
 
     // 在类顶部定义
     private static final ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
@@ -105,16 +108,38 @@ public class ChatService extends Service {
         return START_STICKY;
     }
 
+    // 替换ChatService中的fetchMessagesFromServer方法
     private void fetchMessagesFromServer() {
-        // 这里你应该调用 Retrofit：apiService.syncMessages(lastSyncTimestamp)
-        // 下面是模拟收到消息的逻辑：
+        String token = getSharedPreferences("USER_INFO", MODE_PRIVATE).getString("token", "");
+        if (token.isEmpty()) return;
 
-        // 假设后端返回了一条新消息
-        String mockFriendId = "1001";
-        String mockText = "在吗？帮我写段代码。";
+        // 拉取所有会话的新消息
+        apiService.getUnreadMessages("Bearer " + token, lastSyncTimestamp).enqueue(new Callback<BaseResponse<List<ChatMessage>>>() {
+            @Override
+            public void onResponse(Call<BaseResponse<List<ChatMessage>>> call, Response<BaseResponse<List<ChatMessage>>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().getCode() == 200) {
+                    List<ChatMessage> newMessages = response.body().getData();
+                    if (newMessages != null && !newMessages.isEmpty()) {
+                        lastSyncTimestamp = System.currentTimeMillis();
+                        // 插入本地并通知UI
+                        dbExecutor.execute(() -> {
+                            for (ChatMessage msg : newMessages) {
+                                db.chatDao().insert(msg);
+                            }
+                            // 发送广播通知对应ChatActivity刷新
+                            Intent intent = new Intent("com.example.REFRESH_CHAT");
+                            intent.putExtra("friendId", newMessages.get(0).getFriendId());
+                            sendBroadcast(intent);
+                        });
+                    }
+                }
+            }
 
-        // 触发你刚才写好的处理逻辑
-        onMessageReceived(mockFriendId, mockText);
+            @Override
+            public void onFailure(Call<BaseResponse<List<ChatMessage>>> call, Throwable t) {
+                // 忽略失败，下次轮询重试
+            }
+        });
     }
 
     @Override

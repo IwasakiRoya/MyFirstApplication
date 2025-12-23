@@ -1,5 +1,8 @@
-package com.example.myfirstapplication.POJO;
+package com.example.myfirstapplication.model.response;
 
+import lombok.Data;
+
+@Data
 public class UserResponse {
     public int code;
     public String message;

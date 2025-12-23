@@ -1,35 +1,59 @@
 package com.example.myfirstapplication.database;
 
 import android.content.Context;
+
 import androidx.room.Database;
 import androidx.room.Room;
 import androidx.room.RoomDatabase;
 
-import com.example.myfirstapplication.DAO.ChatDao;
 import com.example.myfirstapplication.model.ChatMessage;
+import com.example.myfirstapplication.model.ChatReadPosition;
+import com.example.myfirstapplication.model.Friend;
+import com.example.myfirstapplication.model.User;
+import com.example.myfirstapplication.model.request.FriendRequest;
 
-// entities 声明数据库包含哪些表，version 每次改表结构都要升版本
-@Database(entities = {ChatMessage.class}, version = 1, exportSchema = false)
+/**
+ * 修复后的数据表：包含所有实体类，版本号升级到4，移除主线程操作
+ */
+@Database(
+        entities = {
+                ChatMessage.class,    // 聊天消息
+                ChatReadPosition.class, // 阅读位置
+                Friend.class,         // 好友
+                FriendRequest.class,  // 好友请求
+                User.class            // 用户信息
+        },
+        version = 4,  // 版本号升级（解决版本冲突）
+        exportSchema = false
+)
 public abstract class AppDatabase extends RoomDatabase {
+    // 单例实例（volatile保证多线程可见性）
+    private static volatile AppDatabase INSTANCE;
 
-    private static AppDatabase instance;
-
-    // 暴露 DAO
+    // 所有DAO抽象方法（确保每个DAO都有对应实现）
     public abstract ChatDao chatDao();
+    public abstract FriendDao friendDao();
+    public abstract FriendRequestDao friendRequestDao();
+    public abstract UserDao userDao();
+    public abstract ChatReadPositionDao chatReadPositionDao();
 
-    // 单例模式：确保全 App 只有一个数据库连接池
-    public static synchronized AppDatabase getInstance(Context context) {
-        if (instance == null) {
-            instance = Room.databaseBuilder(
-                            context.getApplicationContext(),
-                            AppDatabase.class,
-                            "wechat_db" // 数据库文件名
-                    )
-                    .allowMainThreadQueries() // 注意：为了演示方便先允许主线程查询，实际开发建议切异步
-                    .build();
+    // 单例获取方法（修复同步逻辑，移除主线程操作）
+    public static AppDatabase getInstance(Context context) {
+        if (INSTANCE == null) {
+            synchronized (AppDatabase.class) {
+                if (INSTANCE == null) {
+                    INSTANCE = Room.databaseBuilder(
+                                    context.getApplicationContext(),
+                                    AppDatabase.class,
+                                    "wechat_db" // 数据库名统一
+                            )
+                            // 开发阶段允许破坏性迁移（正式环境需写Migration）
+                            .fallbackToDestructiveMigration()
+                            // 移除allowMainThreadQueries，强制异步操作
+                            .build();
+                }
+            }
         }
-        return instance;
+        return INSTANCE;
     }
-
-
 }

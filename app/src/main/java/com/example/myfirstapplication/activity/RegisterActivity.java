@@ -1,4 +1,4 @@
-package com.example.myfirstapplication;
+package com.example.myfirstapplication.activity;
 
 import android.os.Bundle;
 import android.widget.Button;
@@ -7,8 +7,9 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.example.myfirstapplication.POJO.LoginRequest;
-import com.example.myfirstapplication.POJO.UserResponse;
+import com.example.myfirstapplication.R;
+import com.example.myfirstapplication.model.request.LoginRequest;
+import com.example.myfirstapplication.model.response.UserResponse;
 import com.example.myfirstapplication.network.ApiService;
 
 import retrofit2.Call;
