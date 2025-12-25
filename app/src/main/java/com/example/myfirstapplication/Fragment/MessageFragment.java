@@ -26,14 +26,12 @@ import java.util.List;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
-import retrofit2.Retrofit;
-import retrofit2.converter.gson.GsonConverterFactory;
 
 public class MessageFragment extends Fragment {
     private RecyclerView recyclerView;
     private MessageAdapter adapter;
     private List<ChatSummary> dataList = new ArrayList<>();
-    private boolean isMock = true; // 上线前改为false，关闭模拟数据
+    private boolean isMock = true;
     private ApiService apiService;
 
     @Nullable
@@ -41,66 +39,82 @@ public class MessageFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_message, container, false);
 
-        // 优化：复用NetworkUtils中的ApiService（避免重复创建Retrofit）
         apiService = NetworkUtils.getApiService();
 
-        // 初始化UI
+        // 初始化RecyclerView
         recyclerView = view.findViewById(R.id.recyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
+        // 关键：关闭嵌套滑动优化（防止点击无响应）
+        recyclerView.setNestedScrollingEnabled(false);
 
-        // 仅展示最近聊天会话
-        // MessageFragment中打开ChatActivity的代码
-        adapter = new MessageAdapter(dataList, chat -> {
-            Intent intent = new Intent(getActivity(), ChatActivity.class);
-            intent.putExtra("friendName", chat.getName());
-            intent.putExtra("friendId", chat.getFriendId());
-            // 新增：传递好友头像
-            intent.putExtra("friendAvatar", chat.getAvatarUrl()); // 假设ChatSummary有avatarUrl字段
-            startActivity(intent);
+        // ========== 修复：简化Adapter初始化，加固跳转逻辑 ==========
+        adapter = new MessageAdapter(dataList, new MessageAdapter.OnItemClickListener() {
+            @Override
+            public void onItemClick(ChatSummary chat) {
+                // 1. 校验上下文和chat对象（防止空指针）
+                if (getActivity() == null || chat == null) {
+                    Toast.makeText(getContext(), "跳转失败：上下文为空", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                // 2. 校验friendId（必须有值才能跳转）
+                String friendId = chat.getFriendId();
+                if (friendId == null || friendId.isEmpty()) {
+                    Toast.makeText(getContext(), "好友ID为空，无法跳转", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                // 3. 执行跳转
+                Intent intent = new Intent(getActivity(), ChatActivity.class);
+                intent.putExtra("friendName", chat.getName());
+                intent.putExtra("friendId", friendId);
+                intent.putExtra("friendAvatar", chat.getAvatarUrl());
+                // 加固：添加FLAG_ACTIVITY_NEW_TASK（防止上下文异常）
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+            }
         });
         recyclerView.setAdapter(adapter);
 
-        // 核心修复：加载数据前先清空列表 + 仅首次加载模拟数据
+        // 加载数据
         loadChatData();
 
         return view;
     }
 
-    // 新增：统一管理数据加载逻辑（区分mock/真实接口）
     private void loadChatData() {
-        // 每次加载前先清空列表（彻底避免重复）
         dataList.clear();
-
         if (isMock) {
-            // Mock模式：仅当列表为空时添加（防止重复）
-            if (dataList.isEmpty()) {
-                loadMockData();
-            }
+            loadMockData();
         } else {
-            // 真实接口模式：加载后端数据
             loadRecentChats();
         }
     }
 
-    // 加载模拟的最近聊天数据（仅添加一次）
+    // ========== 修复：确保mock数据的friendId有值 ==========
     private void loadMockData() {
+        // 方式1：使用带avatarUrl的构造（如果ChatSummary有这个构造）
         ChatSummary summary1 = new ChatSummary("张三", "晚上打球吗？", "18:05", R.drawable.ic_avatar_1);
-        summary1.setFriendId("1001");
+        summary1.setFriendId("1001"); // 必须设置非空的friendId
+        summary1.setAvatarUrl(""); // 空URL不影响，兜底显示本地资源
+
         ChatSummary summary2 = new ChatSummary("李四", "项目文档发我一下", "15:30", R.drawable.ic_avatar_2);
         summary2.setFriendId("1002");
+        summary2.setAvatarUrl("");
+
         ChatSummary summary3 = new ChatSummary("DeepSeek AI", "你好！我是你的智能助手", "10:00", R.drawable.ic_ai_logo);
         summary3.setFriendId("ai_001");
+        summary3.setAvatarUrl("");
 
         dataList.add(summary1);
         dataList.add(summary2);
         dataList.add(summary3);
+        // 关键：使用notifyDataSetChanged刷新（确保数据生效）
         adapter.notifyDataSetChanged();
+        Toast.makeText(getContext(), "加载了" + dataList.size() + "条模拟数据", Toast.LENGTH_SHORT).show();
     }
 
-    // 从后端加载最近聊天会话（优化：添加空值/异常处理）
+    // 真实接口方法保留（无需修改）
     private void loadRecentChats() {
         String token = getContext().getSharedPreferences("USER_INFO", 0).getString("token", "");
-        // 空Token判断（避免无效请求）
         if (token.isEmpty()) {
             Toast.makeText(getContext(), "请先登录", Toast.LENGTH_SHORT).show();
             return;
@@ -111,7 +125,6 @@ public class MessageFragment extends Fragment {
             public void onResponse(Call<List<ChatSummary>> call, Response<List<ChatSummary>> response) {
                 if (response.isSuccessful()) {
                     List<ChatSummary> result = response.body();
-                    // 空数据判断（避免空指针）
                     if (result != null && !result.isEmpty()) {
                         dataList.addAll(result);
                         adapter.notifyDataSetChanged();

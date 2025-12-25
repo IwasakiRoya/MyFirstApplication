@@ -1,42 +1,104 @@
 package com.example.myfirstapplication.model;
 
+import androidx.annotation.NonNull;
 import androidx.room.Entity;
 import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
-import lombok.Data;
+/**
+ * 聊天消息实体（完全对齐后端ChatMessage）
+ */
 
-@Data
-@Entity(tableName = "messages") // Room数据库表名
+@Entity(tableName = "messages") // 匹配后端数据库表名
 public class ChatMessage {
-    // 主键（自动生成）
+    // 主键（自动生成，匹配后端Integer类型）
     @PrimaryKey(autoGenerate = true)
-    public int id;
-    public String friendId;  // 所属会话的好友ID
-    public String content;   // 消息内容
-    public int type;         // 消息类型：发送/接收
-    public long timestamp;   // 时间戳（消息发送/接收时间）
-    public int status;       // 消息状态（用int类型，适配Room和UI）
+    private Integer id;          // 消息ID（后端：Integer → 前端用Integer）
 
-    // 消息类型常量（供Adapter和Service使用）
-    public final static int TYPE_SENT = 1;       // 我方发送的消息
-    public final static int TYPE_RECEIVED = 0;   // 对方接收的消息
+    private String friendId;     // 好友ID（后端：friend_id）
+    private String content;      // 消息内容（后端：content）
+    private Integer type;        // 消息类型：0=接收，1=发送（后端：type）
+    private Long timestamp;      // 时间戳（后端：timestamp）
+    private Integer status;      // 消息状态：0=成功，1=思考中，2=失败（后端：status）
+    private String userId;       // 发送者ID（后端新增字段：user_id）
 
-    // 消息状态常量（替代原来的ChatStatus内部类，更适配Room）
-    public final static int STATUS_SUCCESS = 0;   // 成功
-    public final static int STATUS_THINKING = 1;  // AI思考中
-    public final static int STATUS_FAILED = 2;    // 失败
+    // 消息类型常量（完全匹配后端）
+    public static final int TYPE_SENT = 1;       // 我方发送
+    public static final int TYPE_RECEIVED = 0;   // 对方接收
 
-    // 无参构造方法（Room必须，核心构造）
+    // 消息状态常量（完全匹配后端）
+    public static final int STATUS_SUCCESS = 0;   // 成功
+    public static final int STATUS_THINKING = 1;  // AI思考中
+    public static final int STATUS_FAILED = 2;    // 失败
+
+    // Room必需的无参构造
     public ChatMessage() {}
 
-    // 有参构造方法（业务使用，添加@Ignore让Room忽略）
-    @Ignore // 关键：添加这个注解消除警告
-    public ChatMessage(String friendId, String content, int type, int status) {
+    // 业务构造方法（添加@Ignore避免Room报错）
+    @Ignore
+    public ChatMessage(String friendId, String content, Integer type, Integer status, String userId) {
         this.friendId = friendId;
         this.content = content;
         this.type = type;
         this.status = status;
-        this.timestamp = System.currentTimeMillis(); // 自动生成时间戳
+        this.userId = userId;
+        this.timestamp = System.currentTimeMillis();
+    }
+
+    // ========== 全字段Getter/Setter（必须和后端字段名一致） ==========
+    public Integer getId() {
+        return id;
+    }
+
+    public void setId(Integer id) {
+        this.id = id;
+    }
+
+    public String getFriendId() {
+        return friendId;
+    }
+
+    public void setFriendId(String friendId) {
+        this.friendId = friendId;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+
+    public Integer getType() {
+        return type;
+    }
+
+    public void setType(Integer type) {
+        this.type = type;
+    }
+
+    public Long getTimestamp() {
+        return timestamp;
+    }
+
+    public void setTimestamp(Long timestamp) {
+        this.timestamp = timestamp;
+    }
+
+    public Integer getStatus() {
+        return status;
+    }
+
+    public void setStatus(Integer status) {
+        this.status = status;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 }

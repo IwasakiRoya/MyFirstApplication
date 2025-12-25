@@ -11,19 +11,19 @@ import java.util.List;
 
 @Dao
 public interface ChatDao {
-    // 插入消息并返回生成的主键 ID (long)
+    // 插入消息（返回自增ID）
     @Insert
     long insert(ChatMessage message);
 
-    // 更新指定 ID 消息的内容和状态
+    // 修复：参数类型改为Integer（匹配实体类的id类型）
     @Query("UPDATE messages SET content = :newContent, status = :newStatus WHERE id = :msgId")
-    void updateMessage(long msgId, String newContent, int newStatus);
+    void updateMessage(Integer msgId, String newContent, Integer newStatus);
 
-    // 查询某个好友的聊天记录 (用于列表显示)
+    // 查询好友聊天记录（LiveData）
     @Query("SELECT * FROM messages WHERE friendId = :fId ORDER BY timestamp ASC")
     LiveData<List<ChatMessage>> getMessagesByFriend(String fId);
 
-    // 根据friendId查询聊天记录（供UI展示）
+    // 查询好友聊天记录（同步）
     @Query("SELECT * FROM messages WHERE friendId = :friendId ORDER BY timestamp ASC")
     List<ChatMessage> getChatMessages(String friendId);
 }

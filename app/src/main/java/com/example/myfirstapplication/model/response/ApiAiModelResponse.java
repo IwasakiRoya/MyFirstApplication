@@ -8,7 +8,7 @@ import lombok.Data;
  */
 @Data
 public class ApiAiModelResponse {
-    private int code;          // 状态码（200=成功）
-    private String msg;        // 提示信息
-    private List<String> data; // 模型列表（如 ["deepseek-chat", "gpt-4o", "qwen-turbo"]）
+    public int code;          // 状态码（200=成功）
+    public String msg;        // 提示信息
+    public List<String> data; // 模型列表（如 ["deepseek-chat", "gpt-4o", "qwen-turbo"]）
 }

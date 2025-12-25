@@ -1,4 +1,3 @@
-// 补充ChatReadPosition的DAO
 package com.example.myfirstapplication.database;
 
 import androidx.room.Dao;
@@ -14,11 +13,11 @@ public interface ChatReadPositionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insertOrUpdate(ChatReadPosition position);
 
-    // 查询指定好友的阅读位置
-    @Query("SELECT * FROM chat_read_position WHERE friendId = :friendId")
-    ChatReadPosition getReadPosition(String friendId);
+    // 修复：补充userId参数，匹配查询逻辑
+    @Query("SELECT * FROM chat_read_position WHERE friendId = :friendId AND userId = :userId")
+    ChatReadPosition getReadPosition(String friendId, String userId);
 
-    // 删除指定好友的阅读位置
-    @Query("DELETE FROM chat_read_position WHERE friendId = :friendId")
-    void delete(String friendId);
+    // 删除阅读位置
+    @Query("DELETE FROM chat_read_position WHERE friendId = :friendId AND userId = :userId")
+    void delete(String friendId, String userId);
 }

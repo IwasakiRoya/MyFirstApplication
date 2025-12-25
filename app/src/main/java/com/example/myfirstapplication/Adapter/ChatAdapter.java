@@ -13,53 +13,52 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.resource.bitmap.CircleCrop;
+import com.bumptech.glide.request.RequestOptions;
 import com.example.myfirstapplication.R;
 import com.example.myfirstapplication.model.ChatMessage;
 
 import java.util.List;
 
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-
-@EqualsAndHashCode(callSuper = true)
-@Data
 public class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
+
+    // 消息类型常量（和ChatMessage对齐）
+    private static final int TYPE_SENT = 1;
+    private static final int TYPE_RECEIVED = 2;
 
     private List<ChatMessage> messageList;
     private String currentUserAvatar; // 当前用户头像URL
     private String friendAvatar;       // 好友头像URL
+    private OnMessageResendListener onMessageResendListener; // 重发回调
 
     // 构造方法：新增头像参数
     public ChatAdapter(List<ChatMessage> messageList, String currentUserAvatar, String friendAvatar) {
-        this.messageList = messageList;
-        this.currentUserAvatar = currentUserAvatar;
-        this.friendAvatar = friendAvatar;
+        this.messageList = messageList == null ? new java.util.ArrayList<>() : messageList;
+        this.currentUserAvatar = currentUserAvatar == null ? "" : currentUserAvatar;
+        this.friendAvatar = friendAvatar == null ? "" : friendAvatar;
     }
 
     // 简化构造（兼容无头像场景）
     public ChatAdapter(List<ChatMessage> messageList) {
-        this.messageList = messageList;
-        this.currentUserAvatar = "";
-        this.friendAvatar = "";
+        this(messageList, "", "");
     }
 
     @Override
     public int getItemViewType(int position) {
-        return messageList.get(position).type;
+        return messageList.get(position).getType(); // 使用getter避免直接访问字段
     }
 
     @NonNull
     @Override
     public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        if (viewType == ChatMessage.TYPE_SENT) {
+        LayoutInflater inflater = LayoutInflater.from(parent.getContext());
+        if (viewType == TYPE_SENT) {
             // 加载右侧布局（我方发送）
-            View v = LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.item_chat_right, parent, false);
+            View v = inflater.inflate(R.layout.item_chat_right, parent, false);
             return new SentViewHolder(v);
         } else {
             // 加载左侧布局（对方发送）
-            View v = LayoutInflater.from(parent.getContext())
-                    .inflate(R.layout.item_chat_left, parent, false);
+            View v = inflater.inflate(R.layout.item_chat_left, parent, false);
             return new ReceivedViewHolder(v);
         }
     }
@@ -67,65 +66,89 @@ public class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
         ChatMessage msg = messageList.get(position);
+        if (msg == null) return;
 
         if (holder instanceof SentViewHolder) {
-            SentViewHolder vh = (SentViewHolder) holder;
-            // 1. 设置消息内容
-            vh.tvContent.setText(msg.content);
-
-            // 2. 设置头像（优先加载网络URL，无则用默认）
-            if (currentUserAvatar != null && !currentUserAvatar.isEmpty()) {
-                Glide.with(vh.itemView.getContext())
-                        .load(currentUserAvatar)
-                        .circleCrop() // 圆形裁剪
-                        .into(vh.ivAvatar);
-            } else {
-                vh.ivAvatar.setImageResource(R.mipmap.ic_launcher_round);
-            }
-
-            // 3. 处理消息状态
-            if (msg.status == ChatMessage.STATUS_THINKING) {
-                // AI思考中/发送中
-                vh.pbLoading.setVisibility(View.VISIBLE);
-                vh.tvContent.setTextColor(Color.GRAY);
-            } else if (msg.status == ChatMessage.STATUS_FAILED) {
-                // 发送失败
-                vh.pbLoading.setVisibility(View.GONE);
-                vh.tvContent.setTextColor(Color.RED);
-                // 点击重发（可选）
-                vh.bubbleLayout.setOnClickListener(v -> {
-                    if (onMessageResendListener != null) {
-                        onMessageResendListener.onResend(msg);
-                    }
-                });
-            } else {
-                // 发送成功
-                vh.pbLoading.setVisibility(View.GONE);
-                vh.tvContent.setTextColor(Color.BLACK);
-            }
+            bindSentMessage((SentViewHolder) holder, msg);
         } else if (holder instanceof ReceivedViewHolder) {
-            ReceivedViewHolder vh = (ReceivedViewHolder) holder;
-            // 1. 设置消息内容
-            vh.tvContent.setText(msg.content);
-
-            // 2. 设置好友头像
-            if (friendAvatar != null && !friendAvatar.isEmpty()) {
-                Glide.with(vh.itemView.getContext())
-                        .load(friendAvatar)
-                        .circleCrop()
-                        .into(vh.ivAvatar);
-            } else {
-                vh.ivAvatar.setImageResource(R.mipmap.ic_launcher_round);
-            }
-
-            // 3. 对方消息隐藏加载框
-            vh.pbLoading.setVisibility(View.GONE);
+            bindReceivedMessage((ReceivedViewHolder) holder, msg);
         }
+    }
+
+    /**
+     * 绑定发送方消息
+     */
+    private void bindSentMessage(SentViewHolder holder, ChatMessage msg) {
+        // 1. 设置消息内容
+        holder.tvContent.setText(msg.getContent() == null ? "" : msg.getContent());
+
+        // 2. 设置头像（Glide优化：添加错误占位、圆形裁剪）
+        RequestOptions options = new RequestOptions()
+                .transform(new CircleCrop())
+                .error(R.mipmap.ic_launcher_round);
+
+        if (!currentUserAvatar.isEmpty()) {
+            Glide.with(holder.itemView.getContext())
+                    .load(currentUserAvatar)
+                    .apply(options)
+                    .into(holder.ivAvatar);
+        } else {
+            holder.ivAvatar.setImageResource(R.mipmap.ic_launcher_round);
+        }
+
+        // 3. 处理消息状态
+        int status = msg.getStatus();
+        if (status == ChatMessage.STATUS_THINKING) {
+            // AI思考中/发送中
+            holder.pbLoading.setVisibility(View.VISIBLE);
+            holder.tvContent.setTextColor(Color.GRAY);
+            holder.bubbleLayout.setOnClickListener(null); // 禁用点击
+        } else if (status == ChatMessage.STATUS_FAILED) {
+            // 发送失败
+            holder.pbLoading.setVisibility(View.GONE);
+            holder.tvContent.setTextColor(Color.RED);
+            // 点击重发
+            holder.bubbleLayout.setOnClickListener(v -> {
+                if (onMessageResendListener != null) {
+                    onMessageResendListener.onResend(msg);
+                }
+            });
+        } else {
+            // 发送成功
+            holder.pbLoading.setVisibility(View.GONE);
+            holder.tvContent.setTextColor(Color.BLACK);
+            holder.bubbleLayout.setOnClickListener(null); // 禁用点击
+        }
+    }
+
+    /**
+     * 绑定接收方消息
+     */
+    private void bindReceivedMessage(ReceivedViewHolder holder, ChatMessage msg) {
+        // 1. 设置消息内容
+        holder.tvContent.setText(msg.getContent() == null ? "" : msg.getContent());
+
+        // 2. 设置好友头像
+        RequestOptions options = new RequestOptions()
+                .transform(new CircleCrop())
+                .error(R.mipmap.ic_launcher_round);
+
+        if (!friendAvatar.isEmpty()) {
+            Glide.with(holder.itemView.getContext())
+                    .load(friendAvatar)
+                    .apply(options)
+                    .into(holder.ivAvatar);
+        } else {
+            holder.ivAvatar.setImageResource(R.mipmap.ic_launcher_round);
+        }
+
+        // 3. 对方消息隐藏加载框
+        holder.pbLoading.setVisibility(View.GONE);
     }
 
     @Override
     public int getItemCount() {
-        return messageList == null ? 0 : messageList.size();
+        return messageList.size();
     }
 
     // ========== ViewHolder定义 ==========
@@ -158,24 +181,43 @@ public class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     // ========== 辅助方法 ==========
-    // 更新消息列表
-    public void setMessageList(List<ChatMessage> newList) {
-        this.messageList = newList;
+    /**
+     * 更新消息列表（增量更新，避免全量刷新）
+     */
+    public void updateMessageList(List<ChatMessage> newList) {
+        if (newList == null) return;
+        this.messageList.clear();
+        this.messageList.addAll(newList);
         notifyDataSetChanged();
     }
 
-    // 更新头像
+    /**
+     * 追加单条消息（聊天时用）
+     */
+    public void addMessage(ChatMessage msg) {
+        if (msg == null) return;
+        this.messageList.add(msg);
+        notifyItemInserted(messageList.size() - 1);
+    }
+
+    /**
+     * 更新头像
+     */
     public void setAvatars(String currentUserAvatar, String friendAvatar) {
-        this.currentUserAvatar = currentUserAvatar;
-        this.friendAvatar = friendAvatar;
+        this.currentUserAvatar = currentUserAvatar == null ? "" : currentUserAvatar;
+        this.friendAvatar = friendAvatar == null ? "" : friendAvatar;
         notifyDataSetChanged();
     }
 
-    // ========== 重发回调 ==========
+    /**
+     * 设置重发回调
+     */
+    public void setOnMessageResendListener(OnMessageResendListener listener) {
+        this.onMessageResendListener = listener;
+    }
+
+    // ========== 重发回调接口 ==========
     public interface OnMessageResendListener {
         void onResend(ChatMessage message);
     }
-
-    private OnMessageResendListener onMessageResendListener;
-
 }

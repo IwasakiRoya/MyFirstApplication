@@ -9,35 +9,34 @@ import androidx.room.RoomDatabase;
 import com.example.myfirstapplication.model.ChatMessage;
 import com.example.myfirstapplication.model.ChatReadPosition;
 import com.example.myfirstapplication.model.Friend;
+import com.example.myfirstapplication.model.FriendRequestEntity;
 import com.example.myfirstapplication.model.User;
-import com.example.myfirstapplication.model.request.FriendRequest;
 
 /**
- * 修复后的数据表：包含所有实体类，版本号升级到4，移除主线程操作
+ * 数据库主类（适配所有新Model）
  */
 @Database(
         entities = {
-                ChatMessage.class,    // 聊天消息
-                ChatReadPosition.class, // 阅读位置
-                Friend.class,         // 好友
-                FriendRequest.class,  // 好友请求
-                User.class            // 用户信息
+                ChatMessage.class,
+                ChatReadPosition.class,
+                Friend.class,
+                FriendRequestEntity.class,
+                User.class
         },
-        version = 4,  // 版本号升级（解决版本冲突）
+        version = 4,
         exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {
-    // 单例实例（volatile保证多线程可见性）
     private static volatile AppDatabase INSTANCE;
 
-    // 所有DAO抽象方法（确保每个DAO都有对应实现）
+    // DAO抽象方法
     public abstract ChatDao chatDao();
     public abstract FriendDao friendDao();
     public abstract FriendRequestDao friendRequestDao();
     public abstract UserDao userDao();
     public abstract ChatReadPositionDao chatReadPositionDao();
 
-    // 单例获取方法（修复同步逻辑，移除主线程操作）
+    // 单例获取
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
             synchronized (AppDatabase.class) {
@@ -45,11 +44,9 @@ public abstract class AppDatabase extends RoomDatabase {
                     INSTANCE = Room.databaseBuilder(
                                     context.getApplicationContext(),
                                     AppDatabase.class,
-                                    "wechat_db" // 数据库名统一
+                                    "wechat_db"
                             )
-                            // 开发阶段允许破坏性迁移（正式环境需写Migration）
                             .fallbackToDestructiveMigration()
-                            // 移除allowMainThreadQueries，强制异步操作
                             .build();
                 }
             }

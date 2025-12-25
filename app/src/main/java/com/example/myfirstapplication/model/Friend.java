@@ -2,24 +2,72 @@ package com.example.myfirstapplication.model;
 
 import androidx.annotation.NonNull;
 import androidx.room.Entity;
+import androidx.room.Ignore;
 
-import lombok.Data;
-
-@Data
-@Entity(tableName = "friends",
-        primaryKeys = {"myId", "friendId"}) // 复合主键
+/**
+ * 好友实体（完全对齐后端Friend）
+ */
+@Entity(tableName = "friends", primaryKeys = {"myId", "friendId"}) // 复合主键匹配后端
 public class Friend {
     @NonNull
-    public String myId;         // 当前登录用户ID
+    private String myId;                // 当前用户ID（后端：my_id）
     @NonNull
-    public String friendId;     // 好友的用户ID
+    private String friendId;            // 好友ID（后端：friend_id）
+    private String friendNickname;      // 好友昵称（后端：friend_nickname）
+    private String friendAvatar;        // 好友头像（后端：friend_avatar）
+    private Boolean isAutoReply;        // 是否自动回复（后端：is_auto_reply → Boolean类型）
 
-    public String friendNickname; // 给好友起的备注
-    public String friendAvatar;   // 好友头像缓存
-    public boolean isAutoReply;   // 关键：是否针对该好友开启了“托管”模式
+    // Room必需的无参构造
+    public Friend() {}
 
-    public Friend(String myId, String friendId) {
+    // 业务构造方法
+    @Ignore
+    public Friend(@NonNull String myId, @NonNull String friendId) {
         this.myId = myId;
         this.friendId = friendId;
+        this.isAutoReply = false; // 默认关闭
+    }
+
+    // ========== Getter/Setter ==========
+    @NonNull
+    public String getMyId() {
+        return myId;
+    }
+
+    public void setMyId(@NonNull String myId) {
+        this.myId = myId;
+    }
+
+    @NonNull
+    public String getFriendId() {
+        return friendId;
+    }
+
+    public void setFriendId(@NonNull String friendId) {
+        this.friendId = friendId;
+    }
+
+    public String getFriendNickname() {
+        return friendNickname;
+    }
+
+    public void setFriendNickname(String friendNickname) {
+        this.friendNickname = friendNickname;
+    }
+
+    public String getFriendAvatar() {
+        return friendAvatar;
+    }
+
+    public void setFriendAvatar(String friendAvatar) {
+        this.friendAvatar = friendAvatar;
+    }
+
+    public Boolean getAutoReply() {
+        return isAutoReply;
+    }
+
+    public void setAutoReply(Boolean autoReply) {
+        isAutoReply = autoReply;
     }
 }

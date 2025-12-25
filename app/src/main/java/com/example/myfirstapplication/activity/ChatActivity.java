@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -57,25 +58,29 @@ public class ChatActivity extends AppCompatActivity {
     private List<ChatMessage> messageList = new ArrayList<>();
     private ApiService apiService;
     private AppDatabase db;
-    private ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
+    // 核心修复1：线程池改为懒加载 + 标记是否已关闭
+    private ExecutorService dbExecutor;
+    private boolean isExecutorShutdown = false;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    // ========== 新增：修复未定义的头像变量 ==========
-    private String currentUserAvatar; // 当前用户头像URL
-    private String friendAvatar;       // 好友头像URL
+    // 头像变量
+    private String currentUserAvatar;
+    private String friendAvatar;
 
     // 阅读位置相关
     private ChatReadPosition readPosition;
     private LinearLayoutManager layoutManager;
 
-    // 广播接收器（接收新消息通知）
+    // 广播接收器
     private BroadcastReceiver chatRefreshReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String refreshFriendId = intent.getStringExtra("friendId");
             if (refreshFriendId != null && refreshFriendId.equals(friendId)) {
-                // 刷新当前会话的消息
-                loadChatHistory(false);
+                // 修复：校验页面是否已销毁
+                if (!isFinishing() && !isDestroyed()) {
+                    loadChatHistory(false);
+                }
             }
         }
     };
@@ -89,20 +94,23 @@ public class ChatActivity extends AppCompatActivity {
         // 获取传参
         friendId = getIntent().getStringExtra("friendId");
         friendName = getIntent().getStringExtra("friendName");
-        // 可选：从Intent获取好友头像（如果MessageFragment传递了）
         friendAvatar = getIntent().getStringExtra("friendAvatar");
 
-        // 新增：如果网络头像为空，使用本地默认头像（兜底）
+        // 兜底头像
         if (friendAvatar == null || friendAvatar.isEmpty()) {
-            friendAvatar = ""; // 空字符串让Glide使用默认头像
+            friendAvatar = "";
         }
+
+        // 核心修复2：初始化线程池（懒加载，避免提前创建）
+        dbExecutor = Executors.newSingleThreadExecutor();
+        isExecutorShutdown = false;
 
         // 初始化
         initView();
         initData();
         initListener();
 
-        // 注册广播（修复标记）
+        // 注册广播
         IntentFilter filter = new IntentFilter("com.example.REFRESH_CHAT");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(chatRefreshReceiver, filter, RECEIVER_NOT_EXPORTED);
@@ -110,11 +118,15 @@ public class ChatActivity extends AppCompatActivity {
             registerReceiver(chatRefreshReceiver, filter);
         }
 
-        // 加载聊天记录并定位到最后阅读位置
+        // 修复3：校验friendId非空后再加载聊天记录
+        if (friendId == null || friendId.isEmpty()) {
+            Toast.makeText(this, "好友ID不能为空", Toast.LENGTH_SHORT).show();
+            finish(); // 关闭页面，避免后续崩溃
+            return;
+        }
         loadChatHistory(true);
     }
 
-    // ChatActivity.java - initView方法
     private void initView() {
         toolbar = findViewById(R.id.toolbar);
         rvChat = findViewById(R.id.rv_chat);
@@ -129,15 +141,11 @@ public class ChatActivity extends AppCompatActivity {
 
         // 初始化RecyclerView
         layoutManager = new LinearLayoutManager(this);
-        layoutManager.setStackFromEnd(true); // 从底部开始显示
+        layoutManager.setStackFromEnd(true);
         rvChat.setLayoutManager(layoutManager);
 
-        // ========== 修复：初始化Adapter（兼容无头像场景） ==========
-        // 方式1：使用带头像的构造（推荐，后续可从本地/后端获取头像）
+        // 初始化Adapter
         chatAdapter = new ChatAdapter(messageList, currentUserAvatar, friendAvatar);
-        // 方式2：如果暂时不需要头像，使用无参构造（兼容原有代码）
-        // chatAdapter = new ChatAdapter(messageList);
-
         rvChat.setAdapter(chatAdapter);
 
         // 设置重发监听
@@ -147,59 +155,60 @@ public class ChatActivity extends AppCompatActivity {
         switchAi.setVisibility(View.GONE);
     }
 
-    // 新增：重发消息方法
     private void resendMessage(ChatMessage msg) {
-        // 更新状态为发送中
+        if (isExecutorShutdown || dbExecutor == null) return;
+
         msg.setStatus(ChatMessage.STATUS_THINKING);
-        // 修复：防止indexOf返回-1导致崩溃
         int msgIndex = messageList.indexOf(msg);
         if (msgIndex != -1) {
             chatAdapter.notifyItemChanged(msgIndex);
         }
-
-        // 重新发送
         sendMessage(msg);
     }
 
-    // 初始化数据
     private void initData() {
         // 获取当前用户信息
         SharedPreferences sp = getSharedPreferences("USER_INFO", MODE_PRIVATE);
         userId = sp.getString("userId", "");
         token = sp.getString("token", "");
-        // ========== 新增：从本地获取当前用户头像 ==========
-        currentUserAvatar = sp.getString("avatarUrl", ""); // 假设登录时已保存头像URL
+        currentUserAvatar = sp.getString("avatarUrl", "");
 
-        // 初始化数据库和网络服务
+        // 初始化数据库（后端未实现接口，暂时不初始化ApiService）
         db = AppDatabase.getInstance(this);
-        apiService = NetworkUtils.getApiService();
+        // 核心修复4：后端接口未实现，跳过ApiService初始化
+        // apiService = NetworkUtils.getApiService();
 
-        // 获取阅读位置
-        dbExecutor.execute(() -> {
-            readPosition = db.chatReadPositionDao().getReadPosition(friendId);
+        // 获取阅读位置（核心修复：补充userId参数）
+        executeInDbExecutor(() -> {
+            // 修复：调用getReadPosition时传入两个参数（friendId + userId）
+            readPosition = db.chatReadPositionDao().getReadPosition(friendId, userId);
             if (readPosition == null) {
                 readPosition = new ChatReadPosition();
                 readPosition.setFriendId(friendId);
+                readPosition.setUserId(userId); // 补充：给阅读位置实体设置userId
                 readPosition.setLastReadMsgId(0);
                 readPosition.setLastReadTime(System.currentTimeMillis());
+
+                // 可选：插入新的阅读位置到数据库（保证数据完整性）
+                db.chatReadPositionDao().insertOrUpdate(readPosition);
             }
         });
     }
 
-    // 初始化监听
     private void initListener() {
         // 返回按钮
         toolbar.setNavigationOnClickListener(v -> finish());
 
-        // 发送按钮
+        // 发送按钮（后端未实现接口，暂时禁用）
         btnSend.setOnClickListener(v -> {
+            Toast.makeText(this, "后端接口未实现，暂时无法发送消息", Toast.LENGTH_SHORT).show();
+            /*
             String content = etInput.getText().toString().trim();
             if (content.isEmpty()) {
                 Toast.makeText(this, "消息内容不能为空", Toast.LENGTH_SHORT).show();
                 return;
             }
 
-            // 构建发送消息
             ChatMessage sendMsg = new ChatMessage();
             sendMsg.setFriendId(friendId);
             sendMsg.setContent(content);
@@ -207,46 +216,63 @@ public class ChatActivity extends AppCompatActivity {
             sendMsg.setStatus(ChatMessage.STATUS_SUCCESS);
             sendMsg.setTimestamp(System.currentTimeMillis());
 
-            // 本地插入并发送到后端
             sendMessage(sendMsg);
             etInput.setText("");
+            */
         });
 
-        // AI开关（暂时隐藏，后续实现）
         switchAi.setVisibility(View.GONE);
     }
 
-    // 加载聊天记录
+    // 加载聊天记录（核心修复5：后端未实现接口，仅加载本地数据）
     private void loadChatHistory(boolean isFirstLoad) {
+        executeInDbExecutor(() -> {
+            // 仅加载本地数据，跳过网络请求
+            List<ChatMessage> localMessages = db.chatDao().getChatMessages(friendId);
+            mainHandler.post(() -> {
+                messageList.clear();
+                messageList.addAll(localMessages);
+                chatAdapter.notifyDataSetChanged();
+
+                // 定位到最后阅读位置
+                if (isFirstLoad && readPosition != null && readPosition.getLastReadMsgId() > 0) {
+                    for (int i = 0; i < messageList.size(); i++) {
+                        if (messageList.get(i).getId() == readPosition.getLastReadMsgId()) {
+                            layoutManager.scrollToPosition(i);
+                            break;
+                        }
+                    }
+                } else {
+                    rvChat.scrollToPosition(messageList.size() - 1);
+                }
+            });
+        });
+
+        // 注释掉网络请求逻辑（后端未实现）
+        /*
         dbExecutor.execute(() -> {
-            // 1. 获取本地最后一条消息的时间戳（增量拉取）
             List<ChatMessage> localMessages = db.chatDao().getChatMessages(friendId);
             long lastTimestamp = 0;
             if (!localMessages.isEmpty()) {
                 lastTimestamp = localMessages.get(localMessages.size() - 1).getTimestamp();
             }
 
-            // 2. 从后端拉取增量消息
             apiService.getChatHistory("Bearer " + token, friendId, lastTimestamp).enqueue(new Callback<BaseResponse<List<ChatMessage>>>() {
                 @Override
                 public void onResponse(Call<BaseResponse<List<ChatMessage>>> call, Response<BaseResponse<List<ChatMessage>>> response) {
                     if (response.isSuccessful() && response.body() != null) {
                         BaseResponse<List<ChatMessage>> res = response.body();
                         if (res.getCode() == 200 && res.getData() != null && !res.getData().isEmpty()) {
-                            // 3. 插入到本地数据库
-                            dbExecutor.execute(() -> {
+                            executeInDbExecutor(() -> {
                                 for (ChatMessage msg : res.getData()) {
                                     db.chatDao().insert(msg);
                                 }
-                                // 4. 刷新UI
                                 refreshChatUI(isFirstLoad);
                             });
                         } else {
-                            // 无增量数据，直接刷新本地数据
                             refreshChatUI(isFirstLoad);
                         }
                     } else {
-                        // 接口失败，加载本地数据
                         refreshChatUI(isFirstLoad);
                     }
                 }
@@ -258,21 +284,35 @@ public class ChatActivity extends AppCompatActivity {
                 }
             });
         });
+        */
     }
 
-    // 刷新聊天UI
+    // 核心修复6：封装线程池执行方法，添加状态校验
+    private void executeInDbExecutor(Runnable task) {
+        // 校验线程池状态，避免向已关闭的线程池提交任务
+        if (isExecutorShutdown || dbExecutor == null || dbExecutor.isShutdown() || dbExecutor.isTerminated()) {
+            return;
+        }
+        try {
+            dbExecutor.execute(task);
+        } catch (Exception e) {
+            e.printStackTrace();
+            // 捕获异常，避免崩溃
+            Toast.makeText(this, "数据库操作失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    // 刷新聊天UI（使用封装的执行方法）
     private void refreshChatUI(boolean isFirstLoad) {
-        dbExecutor.execute(() -> {
-            // 获取最新本地消息
+        executeInDbExecutor(() -> {
             List<ChatMessage> latestMessages = db.chatDao().getChatMessages(friendId);
             mainHandler.post(() -> {
+                if (isFinishing() || isDestroyed()) return; // 校验页面状态
                 messageList.clear();
                 messageList.addAll(latestMessages);
                 chatAdapter.notifyDataSetChanged();
 
-                // 定位到最后阅读位置（首次加载）
                 if (isFirstLoad && readPosition != null && readPosition.getLastReadMsgId() > 0) {
-                    // 找到对应消息的位置
                     for (int i = 0; i < messageList.size(); i++) {
                         if (messageList.get(i).getId() == readPosition.getLastReadMsgId()) {
                             layoutManager.scrollToPosition(i);
@@ -280,36 +320,32 @@ public class ChatActivity extends AppCompatActivity {
                         }
                     }
                 } else {
-                    // 滚动到最底部
                     rvChat.scrollToPosition(messageList.size() - 1);
                 }
             });
         });
     }
 
-    // 发送消息
+    // 发送消息（后端未实现，暂时注释）
     private void sendMessage(ChatMessage message) {
-        // 1. 本地插入消息
-        dbExecutor.execute(() -> {
+        /*
+        executeInDbExecutor(() -> {
             long msgId = db.chatDao().insert(message);
             message.setId((int) msgId);
 
-            // 2. 刷新UI
             mainHandler.post(() -> {
                 messageList.add(message);
                 chatAdapter.notifyItemInserted(messageList.size() - 1);
                 rvChat.scrollToPosition(messageList.size() - 1);
             });
 
-            // 3. 发送到后端
             apiService.sendMessage("Bearer " + token, message).enqueue(new Callback<BaseResponse<ChatMessage>>() {
                 @Override
                 public void onResponse(Call<BaseResponse<ChatMessage>> call, Response<BaseResponse<ChatMessage>> response) {
                     if (!response.isSuccessful()) {
                         mainHandler.post(() -> {
                             Toast.makeText(ChatActivity.this, "消息发送失败", Toast.LENGTH_SHORT).show();
-                            // 更新本地消息状态为失败
-                            dbExecutor.execute(() -> {
+                            executeInDbExecutor(() -> {
                                 db.chatDao().updateMessage(message.getId(), message.getContent(), ChatMessage.STATUS_FAILED);
                             });
                         });
@@ -320,53 +356,71 @@ public class ChatActivity extends AppCompatActivity {
                 public void onFailure(Call<BaseResponse<ChatMessage>> call, Throwable t) {
                     mainHandler.post(() -> {
                         Toast.makeText(ChatActivity.this, "网络异常，消息发送失败", Toast.LENGTH_SHORT).show();
-                        // 更新本地消息状态为失败
-                        dbExecutor.execute(() -> {
+                        executeInDbExecutor(() -> {
                             db.chatDao().updateMessage(message.getId(), message.getContent(), ChatMessage.STATUS_FAILED);
                         });
                     });
                 }
             });
 
-            // 4. 更新阅读位置（发送消息后自动定位到最新）
             updateReadPosition((int) msgId);
         });
+        */
     }
 
     // 更新阅读位置
     private void updateReadPosition(int msgId) {
-        dbExecutor.execute(() -> {
+        executeInDbExecutor(() -> {
+            if (readPosition == null) return;
             readPosition.setLastReadMsgId(msgId);
             readPosition.setLastReadTime(System.currentTimeMillis());
             db.chatReadPositionDao().insertOrUpdate(readPosition);
 
-            // 通知后端已读
+            // 注释掉后端接口调用
+            /*
             apiService.updateReadPosition("Bearer " + token, friendId, msgId).enqueue(new Callback<BaseResponse>() {
                 @Override
-                public void onResponse(Call<BaseResponse> call, Response<BaseResponse> response) {
-                    // 无需处理，仅告知后端
-                }
+                public void onResponse(Call<BaseResponse> call, Response<BaseResponse> response) {}
 
                 @Override
-                public void onFailure(Call<BaseResponse> call, Throwable t) {
-                    // 忽略失败，本地已记录
-                }
+                public void onFailure(Call<BaseResponse> call, Throwable t) {}
             });
+            */
         });
     }
 
+    // 核心修复7：优化线程池销毁逻辑
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(chatRefreshReceiver);
-        dbExecutor.shutdown();
+        // 校验广播接收器是否注册
+        try {
+            unregisterReceiver(chatRefreshReceiver);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // 标记线程池已关闭
+        isExecutorShutdown = true;
+        if (dbExecutor != null && !dbExecutor.isShutdown()) {
+            dbExecutor.shutdown(); // 优雅关闭
+            try {
+                // 等待1秒，让未完成的任务执行完毕
+                if (!dbExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    dbExecutor.shutdownNow(); // 强制关闭
+                }
+            } catch (InterruptedException e) {
+                dbExecutor.shutdownNow();
+            }
+        }
+        dbExecutor = null; // 清空引用
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        // 离开页面时更新阅读位置为最后一条消息
-        if (!messageList.isEmpty()) {
+        // 校验消息列表非空 + 线程池可用
+        if (!messageList.isEmpty() && !isExecutorShutdown) {
             int lastMsgId = messageList.get(messageList.size() - 1).getId();
             updateReadPosition(lastMsgId);
         }

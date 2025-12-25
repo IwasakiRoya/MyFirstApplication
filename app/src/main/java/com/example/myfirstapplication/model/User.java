@@ -2,38 +2,136 @@ package com.example.myfirstapplication.model;
 
 import androidx.annotation.NonNull;
 import androidx.room.Entity;
+import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
-import lombok.Data;
-
-@Data
-@Entity(tableName = "users")
+/**
+ * 用户实体（完全对齐后端User）
+ */
+@Entity(tableName = "users") // 匹配后端表名
 public class User {
     @PrimaryKey
     @NonNull
-    private String userId;       // 唯一标识（通常是后端生成的UUID或手机号）
-    private String username;     // 登录账号
-    private String password;     // 密码（本地通常不存，或只存加密后的，用于自动登录）
+    private String userId;       // 用户ID（后端：user_id）
+    private String username;     // 登录账号（后端：username）
+    private String password;     // 加密密码（后端：password → 前端本地不存储）
+    private Long phoneNumber;    // 手机号（后端：phone_number → Long类型）
+    private String nickname;     // 昵称（后端：nickname）
+    private String avatarUrl;    // 头像地址（后端：avatar_url）
+    private String signature;    // 个性签名（后端：signature）
+    private String aiPrompt;     // AI人设（后端：ai_prompt）
+    private String apiKey;       // AI接口Key（后端：api_key）
+    private String aiModel;      // AI模型（后端：ai_model）
+    private String token;        // 登录Token（后端：token）
+    private Long lastLoginTime;  // 上次登录时间戳（后端：last_login_time）
 
-    private long phoneNumber;
+    // Room必需的无参构造
+    public User() {
+        this.userId = "";
+    }
 
-    // 基本资料
-    private String nickname;     // 昵称
-    private String avatarUrl;    // 头像地址（网络URL或本地路径）
-    private String signature;    // 个性签名
-
-    // AI 托管核心配置
-    private String aiPrompt;     // 设定的人设（例如：你是一个毒舌但心软的朋友）
-    private String apiKey;       // API Key（建议与用户绑定，因为每个人的额度或模型不同）
-    private String aiModel;      // 使用的模型（如 deepseek-chat, gpt-4o）
-
-    // 状态保持
-    private String token;        // 后端返回的鉴权Token（用于自动登录）
-    private long lastLoginTime;  // 上次登录时间
-
-    // 构造方法
+    // 业务构造方法
+    @Ignore
     public User(@NonNull String userId, String username) {
         this.userId = userId;
         this.username = username;
+    }
+
+    // ========== Getter/Setter ==========
+    @NonNull
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(@NonNull String userId) {
+        this.userId = userId;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public Long getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(Long phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    public String getNickname() {
+        return nickname;
+    }
+
+    public void setNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
+    }
+
+    public String getSignature() {
+        return signature;
+    }
+
+    public void setSignature(String signature) {
+        this.signature = signature;
+    }
+
+    public String getAiPrompt() {
+        return aiPrompt;
+    }
+
+    public void setAiPrompt(String aiPrompt) {
+        this.aiPrompt = aiPrompt;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
+    }
+
+    public String getAiModel() {
+        return aiModel;
+    }
+
+    public void setAiModel(String aiModel) {
+        this.aiModel = aiModel;
+    }
+
+    public String getToken() {
+        return token;
+    }
+
+    public void setToken(String token) {
+        this.token = token;
+    }
+
+    public Long getLastLoginTime() {
+        return lastLoginTime;
+    }
+
+    public void setLastLoginTime(Long lastLoginTime) {
+        this.lastLoginTime = lastLoginTime;
     }
 }

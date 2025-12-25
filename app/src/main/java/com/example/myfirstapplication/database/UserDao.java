@@ -9,15 +9,15 @@ import com.example.myfirstapplication.model.User;
 
 @Dao
 public interface UserDao {
-    // 插入/更新用户信息（冲突时替换）
+    // 插入/更新用户
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insertOrUpdate(User user);
 
-    // 根据用户ID查询
+    // 根据ID查询用户
     @Query("SELECT * FROM users WHERE userId = :userId LIMIT 1")
     User getUserById(String userId);
 
-    // 清空用户表（退出登录）
+    // 清空用户表
     @Query("DELETE FROM users")
     void clearUser();
 }

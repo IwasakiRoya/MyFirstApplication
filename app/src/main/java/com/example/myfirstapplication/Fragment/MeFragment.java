@@ -9,7 +9,6 @@ import android.provider.MediaStore;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -28,9 +27,7 @@ import com.example.myfirstapplication.R;
 import com.example.myfirstapplication.activity.LoginActivity;
 import com.example.myfirstapplication.model.User;
 import com.example.myfirstapplication.model.request.ChangePwdRequest;
-import com.example.myfirstapplication.model.response.ApiAiModelResponse;
 import com.example.myfirstapplication.model.response.BaseResponse;
-import com.example.myfirstapplication.model.response.ChangePwdResponse;
 import com.example.myfirstapplication.network.ApiService;
 import com.example.myfirstapplication.utils.NetworkUtils;
 
@@ -54,21 +51,21 @@ public class MeFragment extends Fragment {
     private User currentUser;
     private String token;
     private ApiService apiService;
-    private List<String> aiModelList = new ArrayList<>(); // AI模型列表
-    private static final int REQUEST_CODE_AVATAR = 1001; // 头像选择请求码
+    private List<String> aiModelList = new ArrayList<>();
+    private static final int REQUEST_CODE_AVATAR = 1001;
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_me, container, false);
-        initView(view); // 初始化控件
-        initData();     // 初始化数据（获取登录用户信息）
-        initListener(); // 绑定点击事件
+        initView(view);
+        initData();
+        initListener();
         return view;
     }
 
-    // 1. 初始化控件
     private void initView(View view) {
+        // 控件绑定
         ivAvatar = view.findViewById(R.id.iv_avatar);
         tvNickname = view.findViewById(R.id.tv_nickname);
         tvUserId = view.findViewById(R.id.tv_user_id);
@@ -88,12 +85,14 @@ public class MeFragment extends Fragment {
         btnSaveInfo = view.findViewById(R.id.btn_save_info);
         btnSaveAiConfig = view.findViewById(R.id.btn_save_ai_config);
 
-        // 初始化ApiService
+        // 获取ApiService
         apiService = NetworkUtils.getApiService();
     }
 
-    // 2. 初始化数据（获取用户信息+AI模型列表）
     private void initData() {
+        // 空上下文校验（核心修复1）
+        if (getContext() == null) return;
+
         // 获取本地Token和用户ID
         SharedPreferences sp = getContext().getSharedPreferences("USER_INFO", 0);
         token = sp.getString("token", "");
@@ -101,72 +100,93 @@ public class MeFragment extends Fragment {
 
         // 未登录：跳转到登录页
         if (token.isEmpty() || userId.isEmpty()) {
-            jumpToLogin();
+            if (getActivity() != null && !getActivity().isFinishing()) {
+                jumpToLogin();
+            }
             return;
         }
 
-        // 已登录：获取用户信息
+        // 调用后端接口获取用户信息（核心修复2：泛型匹配BaseResponse<User>）
         apiService.getUserInfo("Bearer " + token).enqueue(new Callback<BaseResponse<User>>() {
             @Override
             public void onResponse(Call<BaseResponse<User>> call, Response<BaseResponse<User>> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     BaseResponse<User> res = response.body();
                     if (res.getCode() == 200) {
+                        // 保存真实用户信息
                         currentUser = res.getData();
-                        if (currentUser != null) {
-                            // 填充个人信息
-                            tvNickname.setText(currentUser.getNickname() != null ? currentUser.getNickname() : "默认昵称");
-                            tvUserId.setText("ID：" + currentUser.getUserId());
-                            etNickname.setText(currentUser.getNickname());
-                            etSignature.setText(currentUser.getSignature());
-                            etPhone.setText(currentUser.getPhoneNumber() + "");
+                        // 填充UI（空值兜底）
+                        tvNickname.setText(currentUser.getNickname() != null ? currentUser.getNickname() : "默认昵称");
+                        tvUserId.setText("ID：" + currentUser.getUserId());
+                        etNickname.setText(currentUser.getNickname() != null ? currentUser.getNickname() : "");
+                        etSignature.setText(currentUser.getSignature() != null ? currentUser.getSignature() : "");
+                        etPhone.setText(currentUser.getPhoneNumber() != null ? currentUser.getPhoneNumber() + "" : "");
+                        etApiKey.setText(currentUser.getApiKey() != null ? currentUser.getApiKey() : "");
+                        etAiPrompt.setText(currentUser.getAiPrompt() != null ? currentUser.getAiPrompt() : "");
 
-                            // 填充AI配置
-                            etApiKey.setText(currentUser.getApiKey());
-                            etAiPrompt.setText(currentUser.getAiPrompt());
-
-                            // 加载头像（Glide需添加依赖：implementation 'com.github.bumptech.glide:glide:4.16.0'）
-                            if (currentUser.getAvatarUrl() != null && !currentUser.getAvatarUrl().isEmpty()) {
-                                Glide.with(MeFragment.this).load(currentUser.getAvatarUrl()).into(ivAvatar);
-                            }
-
-                            // 查询AI模型列表（如果有ApiKey）
-                            if (currentUser.getApiKey() != null && !currentUser.getApiKey().isEmpty()) {
-                                getAiModels(currentUser.getApiKey());
-                            }
+                        // 加载头像
+                        if (currentUser.getAvatarUrl() != null && !currentUser.getAvatarUrl().isEmpty()) {
+                            Glide.with(MeFragment.this).load(currentUser.getAvatarUrl()).into(ivAvatar);
                         }
                     } else {
-                        Toast.makeText(getContext(), res.getMsg(), Toast.LENGTH_SHORT).show();
+                        // 核心修复3：字段名从getMsg()改为getMessage()
+                        Toast.makeText(getContext(), "获取用户信息失败：" + res.getMessage(), Toast.LENGTH_SHORT).show();
                     }
+                } else {
+                    Toast.makeText(getContext(), "获取用户信息失败：服务器响应异常", Toast.LENGTH_SHORT).show();
                 }
             }
 
             @Override
             public void onFailure(Call<BaseResponse<User>> call, Throwable t) {
-                Toast.makeText(getContext(), "获取用户信息失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "网络请求失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
+                // 降级：使用本地模拟数据
+                initMockData(userId);
             }
         });
     }
 
-    // 3. 绑定所有点击事件
+    // 降级方案：模拟数据
+    private void initMockData(String userId) {
+        currentUser = new User();
+        currentUser.setUserId(userId);
+        currentUser.setNickname("默认昵称");
+        currentUser.setAvatarUrl("");
+        currentUser.setSignature("这是模拟的个性签名");
+        currentUser.setPhoneNumber(13800138000L);
+        currentUser.setApiKey("");
+        currentUser.setAiModel("");
+        currentUser.setAiPrompt("");
+
+        // 填充UI
+        tvNickname.setText(currentUser.getNickname());
+        tvUserId.setText("ID：" + currentUser.getUserId());
+        etNickname.setText(currentUser.getNickname());
+        etSignature.setText(currentUser.getSignature());
+        etPhone.setText(currentUser.getPhoneNumber() + "");
+        etApiKey.setText(currentUser.getApiKey());
+        etAiPrompt.setText(currentUser.getAiPrompt());
+    }
+
     private void initListener() {
-        // 3.1 头像点击：选择/拍照更换
+        // 头像点击
         ivAvatar.setOnClickListener(v -> {
+            if (currentUser == null || getContext() == null) return;
             AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
             builder.setTitle("选择头像")
                     .setItems(new String[]{"从相册选择", "拍照"}, (dialog, which) -> {
                         Intent intent = new Intent();
-                        if (which == 0) { // 相册
+                        if (which == 0) {
                             intent.setAction(Intent.ACTION_PICK);
                             intent.setType("image/*");
-                        } else { // 拍照
+                        } else {
                             intent.setAction(MediaStore.ACTION_IMAGE_CAPTURE);
                         }
                         startActivityForResult(intent, REQUEST_CODE_AVATAR);
                     }).show();
         });
 
-        // 3.2 编辑个人信息：显示/隐藏编辑区
+        // 编辑个人信息
         tvEditInfo.setOnClickListener(v -> {
             if (llInfoEditor.getVisibility() == View.GONE) {
                 llInfoEditor.setVisibility(View.VISIBLE);
@@ -177,78 +197,82 @@ public class MeFragment extends Fragment {
             }
         });
 
-        // 3.3 保存个人信息
+        // 保存个人信息
         btnSaveInfo.setOnClickListener(v -> {
-            if (currentUser == null) return;
-            // 更新用户信息（排除userId）
-            currentUser.setNickname(etNickname.getText().toString().trim());
-            currentUser.setSignature(etSignature.getText().toString().trim());
-            currentUser.setPhoneNumber(Long.parseLong(etPhone.getText().toString().trim()));
+            if (currentUser == null || getContext() == null) return;
+            String newNickname = etNickname.getText().toString().trim();
+            String newSignature = etSignature.getText().toString().trim();
+            String newPhone = etPhone.getText().toString().trim();
 
-            // 调用接口保存
-            apiService.updateUserInfo("Bearer " + token, currentUser).enqueue(new Callback<BaseResponse>() {
+            // 校验参数
+            if (newNickname.isEmpty()) {
+                Toast.makeText(getContext(), "昵称不能为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // 更新用户信息
+            currentUser.setNickname(newNickname);
+            currentUser.setSignature(newSignature);
+            try {
+                currentUser.setPhoneNumber(newPhone.isEmpty() ? null : Long.parseLong(newPhone));
+            } catch (NumberFormatException e) {
+                Toast.makeText(getContext(), "手机号格式错误", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // 调用后端修改个人信息接口（核心修复4：泛型BaseResponse<Void>）
+            apiService.updateUserInfo("Bearer " + token, currentUser).enqueue(new Callback<BaseResponse<Void>>() {
                 @Override
-                public void onResponse(Call<BaseResponse> call, Response<BaseResponse> response) {
+                public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
                     if (response.isSuccessful() && response.body() != null) {
-                        BaseResponse res = response.body();
-                        Toast.makeText(getContext(), res.getMsg(), Toast.LENGTH_SHORT).show();
+                        BaseResponse<Void> res = response.body();
                         if (res.getCode() == 200) {
-                            // 更新UI+本地缓存
+                            // 更新UI
                             tvNickname.setText(currentUser.getNickname());
                             llInfoEditor.setVisibility(View.GONE);
                             tvEditInfo.setText("编辑");
+                            Toast.makeText(getContext(), "个人信息更新成功", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(getContext(), "更新失败：" + res.getMessage(), Toast.LENGTH_SHORT).show();
                         }
+                    } else {
+                        Toast.makeText(getContext(), "更新失败：服务器响应异常", Toast.LENGTH_SHORT).show();
                     }
                 }
 
                 @Override
-                public void onFailure(Call<BaseResponse> call, Throwable t) {
-                    Toast.makeText(getContext(), "保存失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
+                public void onFailure(Call<BaseResponse<Void>> call, Throwable t) {
+                    Toast.makeText(getContext(), "网络请求失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
                 }
             });
         });
 
-        // 3.4 API Key输入后查询模型列表
+        // API Key输入提示
         etApiKey.setOnFocusChangeListener((v, hasFocus) -> {
-            if (!hasFocus) { // 失去焦点时查询
+            if (!hasFocus && getContext() != null) {
                 String apiKey = etApiKey.getText().toString().trim();
                 if (!apiKey.isEmpty()) {
-                    getAiModels(apiKey);
+                    Toast.makeText(getContext(), "后端未实现，暂不查询AI模型", Toast.LENGTH_SHORT).show();
                 }
             }
         });
 
-        // 3.5 保存AI配置
+        // 保存AI配置
         btnSaveAiConfig.setOnClickListener(v -> {
-            if (currentUser == null) return;
+            if (currentUser == null || getContext() == null) return;
             String apiKey = etApiKey.getText().toString().trim();
             String aiModel = (String) spAiModel.getSelectedItem();
             String aiPrompt = etAiPrompt.getText().toString().trim();
 
-            // 更新用户AI配置
             currentUser.setApiKey(apiKey);
             currentUser.setAiModel(aiModel);
             currentUser.setAiPrompt(aiPrompt);
-
-            // 调用接口保存
-            apiService.saveAiConfig("Bearer " + token, currentUser).enqueue(new Callback<BaseResponse>() {
-                @Override
-                public void onResponse(Call<BaseResponse> call, Response<BaseResponse> response) {
-                    if (response.isSuccessful() && response.body() != null) {
-                        BaseResponse res = response.body();
-                        Toast.makeText(getContext(), res.getMsg(), Toast.LENGTH_SHORT).show();
-                    }
-                }
-
-                @Override
-                public void onFailure(Call<BaseResponse> call, Throwable t) {
-                    Toast.makeText(getContext(), "保存AI配置失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
-                }
-            });
+            Toast.makeText(getContext(), "AI配置已本地保存（后端未实现）", Toast.LENGTH_SHORT).show();
         });
 
-        // 3.6 修改密码
+        // 修改密码
         tvChangePwd.setOnClickListener(v -> {
+            if (getContext() == null) return;
             // 弹出密码修改对话框
             View dialogView = LayoutInflater.from(getContext()).inflate(R.layout.dialog_change_pwd, null);
             EditText etOldPwd = dialogView.findViewById(R.id.et_old_pwd);
@@ -263,7 +287,7 @@ public class MeFragment extends Fragment {
                         String newPwd = etNewPwd.getText().toString().trim();
                         String confirmPwd = etConfirmPwd.getText().toString().trim();
 
-                        // 校验
+                        // 校验参数
                         if (oldPwd.isEmpty() || newPwd.isEmpty() || confirmPwd.isEmpty()) {
                             Toast.makeText(getContext(), "密码不能为空", Toast.LENGTH_SHORT).show();
                             return;
@@ -273,24 +297,31 @@ public class MeFragment extends Fragment {
                             return;
                         }
 
-                        // 调用修改密码接口
-                        ChangePwdRequest request = new ChangePwdRequest();
-                        request.setUserId(currentUser.getUserId());
-                        request.setOldPwd(oldPwd);
-                        request.setNewPwd(newPwd);
-
-                        apiService.changePassword("Bearer " + token, request).enqueue(new Callback<ChangePwdResponse>() {
+                        // 构建请求体
+                        ChangePwdRequest request = new ChangePwdRequest(oldPwd, newPwd);
+                        // 调用后端修改密码接口（核心修复5：ChangePwdResponse改为BaseResponse<Void>）
+                        apiService.changePassword("Bearer " + token, request).enqueue(new Callback<BaseResponse<Void>>() {
                             @Override
-                            public void onResponse(Call<ChangePwdResponse> call, Response<ChangePwdResponse> response) {
+                            public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
                                 if (response.isSuccessful() && response.body() != null) {
-                                    ChangePwdResponse res = response.body();
-                                    Toast.makeText(getContext(), res.getMessage(), Toast.LENGTH_SHORT).show();
+                                    BaseResponse<Void> res = response.body();
+                                    if (res.getCode() == 200) {
+                                        Toast.makeText(getContext(), "密码修改成功，请重新登录", Toast.LENGTH_SHORT).show();
+                                        // 退出登录
+                                        SharedPreferences sp = getContext().getSharedPreferences("USER_INFO", 0);
+                                        sp.edit().clear().apply();
+                                        jumpToLogin();
+                                    } else {
+                                        Toast.makeText(getContext(), "修改失败：" + res.getMessage(), Toast.LENGTH_SHORT).show();
+                                    }
+                                } else {
+                                    Toast.makeText(getContext(), "修改失败：服务器响应异常", Toast.LENGTH_SHORT).show();
                                 }
                             }
 
                             @Override
-                            public void onFailure(Call<ChangePwdResponse> call, Throwable t) {
-                                Toast.makeText(getContext(), "修改失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
+                            public void onFailure(Call<BaseResponse<Void>> call, Throwable t) {
+                                Toast.makeText(getContext(), "网络请求失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
                             }
                         });
                     })
@@ -298,29 +329,31 @@ public class MeFragment extends Fragment {
                     .show();
         });
 
-        // 3.7 退出登录
+        // 退出登录
         tvLogout.setOnClickListener(v -> {
+            if (getContext() == null) return;
             new AlertDialog.Builder(getContext())
                     .setTitle("确认退出")
                     .setMessage("是否退出当前账号？")
                     .setPositiveButton("退出", (dialog, which) -> {
-                        // 调用后端退出接口（可选）
-                        apiService.logout("Bearer " + token).enqueue(new Callback<BaseResponse>() {
+                        // 调用后端退出登录接口（核心修复6：泛型BaseResponse<Void>）
+                        apiService.logout("Bearer " + token).enqueue(new Callback<BaseResponse<Void>>() {
                             @Override
-                            public void onResponse(Call<BaseResponse> call, Response<BaseResponse> response) {
-                                // 清理本地缓存
+                            public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
+                                // 无论后端是否成功，都清理本地缓存
                                 SharedPreferences sp = getContext().getSharedPreferences("USER_INFO", 0);
                                 sp.edit().clear().apply();
-                                // 跳转到登录页
                                 jumpToLogin();
+                                Toast.makeText(getContext(), "已退出登录", Toast.LENGTH_SHORT).show();
                             }
 
                             @Override
-                            public void onFailure(Call<BaseResponse> call, Throwable t) {
-                                // 接口失败也清理本地缓存
+                            public void onFailure(Call<BaseResponse<Void>> call, Throwable t) {
+                                // 网络失败，仍清理本地缓存
                                 SharedPreferences sp = getContext().getSharedPreferences("USER_INFO", 0);
                                 sp.edit().clear().apply();
                                 jumpToLogin();
+                                Toast.makeText(getContext(), "已退出登录（本地）", Toast.LENGTH_SHORT).show();
                             }
                         });
                     })
@@ -329,56 +362,24 @@ public class MeFragment extends Fragment {
         });
     }
 
-    // 辅助：查询AI模型列表（硅基流动）
-    private void getAiModels(String apiKey) {
-        apiService.getAiModels(apiKey).enqueue(new Callback<ApiAiModelResponse>() {
-            @Override
-            public void onResponse(Call<ApiAiModelResponse> call, Response<ApiAiModelResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    ApiAiModelResponse res = response.body();
-                    if (res.getCode() == 200) {
-                        aiModelList = res.getData();
-                        // 填充下拉框
-                        ArrayAdapter<String> adapter = new ArrayAdapter<>(getContext(),
-                                android.R.layout.simple_spinner_item, aiModelList);
-                        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-                        spAiModel.setAdapter(adapter);
-
-                        // 选中当前用户的模型
-                        if (currentUser.getAiModel() != null) {
-                            int position = aiModelList.indexOf(currentUser.getAiModel());
-                            if (position != -1) {
-                                spAiModel.setSelection(position);
-                            }
-                        }
-                    }
-                }
-            }
-
-            @Override
-            public void onFailure(Call<ApiAiModelResponse> call, Throwable t) {
-                Toast.makeText(getContext(), "查询模型列表失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-
-    // 辅助：跳转到登录页
+    // 跳转登录页
     private void jumpToLogin() {
+        if (getActivity() == null || getActivity().isFinishing()) return;
         Intent intent = new Intent(getActivity(), LoginActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
-        getActivity().finish(); // 关闭当前页面
+        getActivity().finish();
     }
 
     // 处理头像选择返回
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CODE_AVATAR && resultCode == getActivity().RESULT_OK && data != null) {
-            // 获取头像Uri（实际项目中需上传到服务器，返回URL后更新user.avatarUrl）
+        if (requestCode == REQUEST_CODE_AVATAR && resultCode == getActivity().RESULT_OK && data != null && getContext() != null) {
             Uri uri = data.getData();
             if (uri != null) {
                 ivAvatar.setImageURI(uri);
-                // 此处省略上传头像到服务器的逻辑，上传成功后更新currentUser.avatarUrl并调用updateUserInfo
+                Toast.makeText(getContext(), "头像已本地更换（后端未实现上传）", Toast.LENGTH_SHORT).show();
             }
         }
     }
