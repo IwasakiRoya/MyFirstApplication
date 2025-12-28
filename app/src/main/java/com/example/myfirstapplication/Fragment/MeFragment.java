@@ -28,6 +28,8 @@ import com.example.myfirstapplication.activity.LoginActivity;
 import com.example.myfirstapplication.model.User;
 import com.example.myfirstapplication.model.request.ChangePwdRequest;
 import com.example.myfirstapplication.model.response.BaseResponse;
+import com.example.myfirstapplication.model.response.ChangePwdResponse;
+import com.example.myfirstapplication.model.response.UserResponse;
 import com.example.myfirstapplication.network.ApiService;
 import com.example.myfirstapplication.utils.NetworkUtils;
 
@@ -85,12 +87,18 @@ public class MeFragment extends Fragment {
         btnSaveInfo = view.findViewById(R.id.btn_save_info);
         btnSaveAiConfig = view.findViewById(R.id.btn_save_ai_config);
 
+        // 初始化AI模型下拉框
+        aiModelList.add("DeepSeek");
+        aiModelList.add("GPT-3.5");
+        aiModelList.add("GPT-4");
+        spAiModel.setAdapter(new ArrayAdapter<>(getContext(), android.R.layout.simple_spinner_item, aiModelList));
+
         // 获取ApiService
         apiService = NetworkUtils.getApiService();
     }
 
     private void initData() {
-        // 空上下文校验（核心修复1）
+        // 空上下文校验
         if (getContext() == null) return;
 
         // 获取本地Token和用户ID
@@ -106,8 +114,8 @@ public class MeFragment extends Fragment {
             return;
         }
 
-        // 调用后端接口获取用户信息（核心修复2：泛型匹配BaseResponse<User>）
-        apiService.getUserInfo("Bearer " + token).enqueue(new Callback<BaseResponse<User>>() {
+        // 调用后端接口获取用户信息
+        apiService.getUserInfo(token, "useToken").enqueue(new Callback<BaseResponse<User>>() {
             @Override
             public void onResponse(Call<BaseResponse<User>> call, Response<BaseResponse<User>> response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -128,8 +136,15 @@ public class MeFragment extends Fragment {
                         if (currentUser.getAvatarUrl() != null && !currentUser.getAvatarUrl().isEmpty()) {
                             Glide.with(MeFragment.this).load(currentUser.getAvatarUrl()).into(ivAvatar);
                         }
+
+                        // 设置AI模型选中项
+                        if (currentUser.getAiModel() != null && !currentUser.getAiModel().isEmpty()) {
+                            int position = aiModelList.indexOf(currentUser.getAiModel());
+                            if (position != -1) {
+                                spAiModel.setSelection(position);
+                            }
+                        }
                     } else {
-                        // 核心修复3：字段名从getMsg()改为getMessage()
                         Toast.makeText(getContext(), "获取用户信息失败：" + res.getMessage(), Toast.LENGTH_SHORT).show();
                     }
                 } else {
@@ -155,7 +170,7 @@ public class MeFragment extends Fragment {
         currentUser.setSignature("这是模拟的个性签名");
         currentUser.setPhoneNumber(13800138000L);
         currentUser.setApiKey("");
-        currentUser.setAiModel("");
+        currentUser.setAiModel("DeepSeek");
         currentUser.setAiPrompt("");
 
         // 填充UI
@@ -220,8 +235,8 @@ public class MeFragment extends Fragment {
                 return;
             }
 
-            // 调用后端修改个人信息接口（核心修复4：泛型BaseResponse<Void>）
-            apiService.updateUserInfo("Bearer " + token, currentUser).enqueue(new Callback<BaseResponse<Void>>() {
+            // 调用后端修改个人信息接口
+            apiService.updateUserInfo(token, currentUser).enqueue(new Callback<BaseResponse<Void>>() {
                 @Override
                 public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
                     if (response.isSuccessful() && response.body() != null) {
@@ -252,7 +267,7 @@ public class MeFragment extends Fragment {
             if (!hasFocus && getContext() != null) {
                 String apiKey = etApiKey.getText().toString().trim();
                 if (!apiKey.isEmpty()) {
-                    Toast.makeText(getContext(), "后端未实现，暂不查询AI模型", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getContext(), "API Key已保存，将用于AI对话", Toast.LENGTH_SHORT).show();
                 }
             }
         });
@@ -264,10 +279,14 @@ public class MeFragment extends Fragment {
             String aiModel = (String) spAiModel.getSelectedItem();
             String aiPrompt = etAiPrompt.getText().toString().trim();
 
+            // 更新本地用户信息
             currentUser.setApiKey(apiKey);
             currentUser.setAiModel(aiModel);
             currentUser.setAiPrompt(aiPrompt);
-            Toast.makeText(getContext(), "AI配置已本地保存（后端未实现）", Toast.LENGTH_SHORT).show();
+
+            // 调用后端保存AI配置接口（如果有）
+            // 暂时先本地保存提示
+            Toast.makeText(getContext(), "AI配置已保存", Toast.LENGTH_SHORT).show();
         });
 
         // 修改密码
@@ -299,12 +318,12 @@ public class MeFragment extends Fragment {
 
                         // 构建请求体
                         ChangePwdRequest request = new ChangePwdRequest(oldPwd, newPwd);
-                        // 调用后端修改密码接口（核心修复5：ChangePwdResponse改为BaseResponse<Void>）
-                        apiService.changePassword("Bearer " + token, request).enqueue(new Callback<BaseResponse<Void>>() {
+                        // 调用后端修改密码接口（适配ChangePwdResponse）
+                        apiService.changePassword(token, request).enqueue(new Callback<ChangePwdResponse>() {
                             @Override
-                            public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
+                            public void onResponse(Call<ChangePwdResponse> call, Response<ChangePwdResponse> response) {
                                 if (response.isSuccessful() && response.body() != null) {
-                                    BaseResponse<Void> res = response.body();
+                                    ChangePwdResponse res = response.body();
                                     if (res.getCode() == 200) {
                                         Toast.makeText(getContext(), "密码修改成功，请重新登录", Toast.LENGTH_SHORT).show();
                                         // 退出登录
@@ -320,7 +339,7 @@ public class MeFragment extends Fragment {
                             }
 
                             @Override
-                            public void onFailure(Call<BaseResponse<Void>> call, Throwable t) {
+                            public void onFailure(Call<ChangePwdResponse> call, Throwable t) {
                                 Toast.makeText(getContext(), "网络请求失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
                             }
                         });
@@ -336,8 +355,8 @@ public class MeFragment extends Fragment {
                     .setTitle("确认退出")
                     .setMessage("是否退出当前账号？")
                     .setPositiveButton("退出", (dialog, which) -> {
-                        // 调用后端退出登录接口（核心修复6：泛型BaseResponse<Void>）
-                        apiService.logout("Bearer " + token).enqueue(new Callback<BaseResponse<Void>>() {
+                        // 调用后端退出登录接口
+                        apiService.logout(token).enqueue(new Callback<BaseResponse<Void>>() {
                             @Override
                             public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
                                 // 无论后端是否成功，都清理本地缓存

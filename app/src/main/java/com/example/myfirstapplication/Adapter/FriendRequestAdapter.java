@@ -18,6 +18,7 @@ import com.example.myfirstapplication.model.FriendRequestEntity;
 import com.example.myfirstapplication.model.User;
 import com.example.myfirstapplication.model.response.BaseResponse;
 import com.example.myfirstapplication.network.ApiService;
+import com.example.myfirstapplication.utils.NetworkUtils;
 
 import java.util.List;
 
@@ -30,13 +31,6 @@ public class FriendRequestAdapter extends RecyclerView.Adapter<FriendRequestAdap
     private OnRequestListener listener;
     private ApiService apiService; // 接口服务
     private String token; // 用户token
-
-    // 构造方法传入apiService和token
-    public FriendRequestAdapter(List<FriendRequestEntity> requestList, ApiService apiService, String token) {
-        this.requestList = requestList;
-        this.apiService = apiService;
-        this.token = token;
-    }
     private long lastClickTime = 0; // 防抖
 
     // 回调接口（适配实体类）
@@ -45,9 +39,12 @@ public class FriendRequestAdapter extends RecyclerView.Adapter<FriendRequestAdap
         void onReject(FriendRequestEntity request);
     }
 
-    public FriendRequestAdapter(List<FriendRequestEntity> list, OnRequestListener listener) {
+    // 统一构造方法：包含所有必要参数
+    public FriendRequestAdapter(List<FriendRequestEntity> list, OnRequestListener listener, String token) {
         this.requestList = list == null ? java.util.Collections.emptyList() : list;
         this.listener = listener;
+        this.token = token;
+        this.apiService = NetworkUtils.getApiService(); // 统一获取ApiService单例
     }
 
     @NonNull
@@ -70,7 +67,7 @@ public class FriendRequestAdapter extends RecyclerView.Adapter<FriendRequestAdap
         // 异步查询真实昵称并更新
         loadUserName(fromUserId, holder.tvName);
 
-        // 2. 设置验证消息（空值兜底，逻辑不变）
+        // 2. 设置验证消息（空值兜底）
         String requestMsg = request.getRequestMsg() == null ? "请求添加你为好友" : request.getRequestMsg();
         holder.tvMsg.setText(requestMsg);
 
@@ -83,7 +80,7 @@ public class FriendRequestAdapter extends RecyclerView.Adapter<FriendRequestAdap
         // 异步查询真实头像并更新
         loadUserAvatar(fromUserId, holder.ivAvatar, options);
 
-        // 4. 通过按钮（防抖，逻辑不变）
+        // 4. 通过按钮（防抖）
         holder.btnAccept.setOnClickListener(v -> {
             if (isClickValid()) {
                 if (listener != null) {
@@ -92,7 +89,7 @@ public class FriendRequestAdapter extends RecyclerView.Adapter<FriendRequestAdap
             }
         });
 
-        // 5. 拒绝按钮（防抖，逻辑不变）
+        // 5. 拒绝按钮（防抖）
         holder.btnReject.setOnClickListener(v -> {
             if (isClickValid()) {
                 if (listener != null) {
@@ -106,8 +103,12 @@ public class FriendRequestAdapter extends RecyclerView.Adapter<FriendRequestAdap
      * 异步加载用户昵称（调用searchUser接口）
      */
     private void loadUserName(String userId, TextView tvName) {
-        // 调用你现有的searchUser接口，通过userId查用户信息
-        apiService.searchUser("Bearer " + token, userId)
+        // 空值校验
+        if (apiService == null || token == null || token.isEmpty() || userId == null) {
+            return;
+        }
+        // 调用searchUser接口，通过userId查用户信息
+        apiService.searchUser(token, userId)
                 .enqueue(new Callback<BaseResponse<User>>() {
                     @Override
                     public void onResponse(Call<BaseResponse<User>> call, Response<BaseResponse<User>> response) {
@@ -131,7 +132,11 @@ public class FriendRequestAdapter extends RecyclerView.Adapter<FriendRequestAdap
      * 异步加载用户头像（调用searchUser接口）
      */
     private void loadUserAvatar(String userId, ImageView ivAvatar, RequestOptions options) {
-        apiService.searchUser("Bearer " + token, userId)
+        // 空值校验
+        if (apiService == null || token == null || token.isEmpty() || userId == null) {
+            return;
+        }
+        apiService.searchUser(token, userId)
                 .enqueue(new Callback<BaseResponse<User>>() {
                     @Override
                     public void onResponse(Call<BaseResponse<User>> call, Response<BaseResponse<User>> response) {

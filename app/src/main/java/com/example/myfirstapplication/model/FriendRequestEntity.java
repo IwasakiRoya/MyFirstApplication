@@ -13,15 +13,16 @@ import java.util.Date;
 @Entity(tableName = "friend_requests") // 匹配后端表名
 public class FriendRequestEntity {
     @PrimaryKey
-    private String requestId;     // 请求ID（后端：request_id → String/UUID）
     @NonNull
-    private String fromUserId;    // 发起者ID（后端：from_user_id）
+    public String requestId;     // 请求ID（后端：request_id → String/UUID）
     @NonNull
-    private String toUserId;      // 接收者ID（后端：to_user_id）
-    private String requestMsg;    // 请求备注（后端：request_msg）
-    private Integer status;       // 状态：0=未处理，1=同意，2=拒绝（后端：status）
-    private Date createTime;      // 发起时间（后端：create_time → Date类型）
-    private Date handleTime;      // 处理时间（后端：handle_time → Date类型）
+    public String fromUserId;    // 发起者ID（后端：from_user_id）
+    @NonNull
+    public String toUserId;      // 接收者ID（后端：to_user_id）
+    public String requestMsg;    // 请求备注（后端：request_msg）
+    public Integer status;       // 状态：0=未处理，1=同意，2=拒绝（后端：status）
+    public Date createTime;      // 发起时间（后端：create_time → Date类型）
+    public Date handleTime;      // 处理时间（后端：handle_time → Date类型）
 
     // 状态常量（完全匹配后端）
     public static final int STATUS_UNHANDLED = 0;

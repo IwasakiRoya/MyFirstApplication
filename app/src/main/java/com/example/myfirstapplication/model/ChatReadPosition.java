@@ -12,11 +12,11 @@ import androidx.room.PrimaryKey;
 public class ChatReadPosition {
     @PrimaryKey
     @NonNull
-    private String friendId;       // 好友ID（后端：friend_id）
+    public String friendId;       // 好友ID（后端：friend_id）
 
-    private Integer lastReadMsgId; // 最后阅读消息ID（后端：last_read_msg_id）
-    private Long lastReadTime;     // 最后阅读时间戳（后端：last_read_time）
-    private String userId;         // 所属用户ID（后端新增字段：user_id）
+    public Integer lastReadMsgId; // 最后阅读消息ID（后端：last_read_msg_id）
+    public Long lastReadTime;     // 最后阅读时间戳（后端：last_read_time）
+    public String userId;         // 所属用户ID（后端新增字段：user_id）
 
     // Room必需的无参构造
     public ChatReadPosition() {

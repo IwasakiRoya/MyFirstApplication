@@ -10,12 +10,12 @@ import androidx.room.Ignore;
 @Entity(tableName = "friends", primaryKeys = {"myId", "friendId"}) // 复合主键匹配后端
 public class Friend {
     @NonNull
-    private String myId;                // 当前用户ID（后端：my_id）
+    public String myId;                // 当前用户ID（后端：my_id）
     @NonNull
-    private String friendId;            // 好友ID（后端：friend_id）
-    private String friendNickname;      // 好友昵称（后端：friend_nickname）
-    private String friendAvatar;        // 好友头像（后端：friend_avatar）
-    private Boolean isAutoReply;        // 是否自动回复（后端：is_auto_reply → Boolean类型）
+    public String friendId;            // 好友ID（后端：friend_id）
+    public String friendNickname;      // 好友昵称（后端：friend_nickname）
+    public String friendAvatar;        // 好友头像（后端：friend_avatar）
+    public Boolean isAutoReply;        // 是否自动回复（后端：is_auto_reply → Boolean类型）
 
     // Room必需的无参构造
     public Friend() {}

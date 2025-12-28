@@ -8,6 +8,10 @@ public class BaseResponse<T> {
     private String message;
     private T data;
 
+    public boolean isSuccess() {
+        return code == 200;
+    }
+
     // 静态成功方法
     public static <T> BaseResponse<T> success() {
         BaseResponse<T> response = new BaseResponse<>();

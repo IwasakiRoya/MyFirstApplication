@@ -95,7 +95,7 @@ public class ChatService extends Service {
         if (token.isEmpty()) return;
 
         // 调用后端未读消息接口
-        apiService.getUnreadMessages("Bearer " + token, lastSyncTimestamp).enqueue(new Callback<BaseResponse<List<ChatMessage>>>() {
+        apiService.getUnreadMessages(token, lastSyncTimestamp).enqueue(new Callback<BaseResponse<List<ChatMessage>>>() {
             @Override
             public void onResponse(Call<BaseResponse<List<ChatMessage>>> call, Response<BaseResponse<List<ChatMessage>>> response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -103,16 +103,20 @@ public class ChatService extends Service {
                     if (res.getCode() == 200) {
                         List<ChatMessage> newMessages = res.getData();
                         if (newMessages != null && !newMessages.isEmpty()) {
-                            lastSyncTimestamp = System.currentTimeMillis();
                             // 插入本地数据库并通知UI
                             dbExecutor.execute(() -> {
                                 for (ChatMessage msg : newMessages) {
+                                    // 确保服务器返回的消息ID不冲突，让Room自动生成ID
+                                    msg.setId(null); // 清除ID，让Room自动生成
                                     db.chatDao().insert(msg);
                                 }
                                 // 发送广播通知刷新
                                 Intent intent = new Intent("com.example.REFRESH_CHAT");
                                 intent.putExtra("friendId", newMessages.get(0).getFriendId());
                                 sendBroadcast(intent);
+                                
+                                // 在数据库操作完成后更新时间戳，确保获取最新时间
+                                lastSyncTimestamp = System.currentTimeMillis();
                             });
                         }
                     }
@@ -131,6 +135,20 @@ public class ChatService extends Service {
         super.onDestroy();
         if (syncHandler != null && syncRunnable != null) {
             syncHandler.removeCallbacks(syncRunnable);
+            syncRunnable = null;
+        }
+        
+        // 关闭ExecutorService以避免内存泄漏
+        if (dbExecutor != null && !dbExecutor.isShutdown()) {
+            dbExecutor.shutdown();
+            try {
+                if (!dbExecutor.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS)) {
+                    dbExecutor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                dbExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
@@ -146,18 +164,22 @@ public class ChatService extends Service {
 
         // 构造消息对象
         ChatMessage msg = new ChatMessage(friendId, text, type, status, userId);
+        msg.setTimestamp(System.currentTimeMillis());
 
-        // 用Thread执行数据库操作，通过原子类获取返回值
+        // 使用ExecutorService执行数据库操作并获取返回值
         final java.util.concurrent.atomic.AtomicLong insertId = new java.util.concurrent.atomic.AtomicLong(0);
-        new Thread(() -> {
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        
+        dbExecutor.execute(() -> {
             insertId.set(AppDatabase.getInstance(this).chatDao().insert(msg));
-        }).start();
-
-        // 短暂等待确保插入完成（简单兜底，也可改用回调）
+            latch.countDown();
+        });
+        
         try {
-            Thread.sleep(100);
+            latch.await(5, java.util.concurrent.TimeUnit.SECONDS); // 等待最多5秒
         } catch (InterruptedException e) {
             e.printStackTrace();
+            Thread.currentThread().interrupt();
         }
         return insertId.get();
     }
@@ -167,8 +189,8 @@ public class ChatService extends Service {
         // 转换long到Integer（匹配ChatDao参数）
         Integer msgId = (placeholderId > 0) ? (int) placeholderId : 0;
 
-        // 子线程执行数据库更新
-        new Thread(() -> {
+        // 使用ExecutorService执行数据库更新
+        dbExecutor.execute(() -> {
             AppDatabase.getInstance(this).chatDao().updateMessage(msgId, response, status);
 
             // Service中切换到主线程的两种方式（任选其一）
@@ -178,8 +200,7 @@ public class ChatService extends Service {
                 // Service发送广播必须用getApplicationContext()，避免内存泄漏
                 getApplicationContext().sendBroadcast(refreshIntent);
             });
-
-        }).start();
+        });
     }
 
     // AI接口调用（原生JSONObject，无Gson）
@@ -202,7 +223,7 @@ public class ChatService extends Service {
         }
 
         // 调用接口
-        apiService.getAiResponse("Bearer " + apiKey, requestJson)
+        apiService.getAiResponse(apiKey, requestJson)
                 .enqueue(new Callback<BaseResponse<String>>() {
                     @Override
                     public void onResponse(Call<BaseResponse<String>> call, Response<BaseResponse<String>> response) {

@@ -1,6 +1,7 @@
 package com.example.myfirstapplication.Fragment;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -17,8 +18,11 @@ import com.example.myfirstapplication.Adapter.MessageAdapter;
 import com.example.myfirstapplication.R;
 import com.example.myfirstapplication.activity.ChatActivity;
 import com.example.myfirstapplication.model.ChatSummary;
+import com.example.myfirstapplication.model.response.BaseResponse;
 import com.example.myfirstapplication.network.ApiService;
+import com.example.myfirstapplication.utils.FriendAddHelper;
 import com.example.myfirstapplication.utils.NetworkUtils;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,8 +35,10 @@ public class MessageFragment extends Fragment {
     private RecyclerView recyclerView;
     private MessageAdapter adapter;
     private List<ChatSummary> dataList = new ArrayList<>();
-    private boolean isMock = true;
+    private boolean isMock = false; // 改为加载真实数据
     private ApiService apiService;
+    private String myUserId; // 当前登录用户ID（用于添加好友）
+    private FloatingActionButton fabAddFriend; // 正确绑定FloatingActionButton
 
     @Nullable
     @Override
@@ -41,22 +47,26 @@ public class MessageFragment extends Fragment {
 
         apiService = NetworkUtils.getApiService();
 
+        // 初始化当前用户ID（与ContactsFragment逻辑一致）
+        if (getContext() != null) {
+            myUserId = NetworkUtils.getUserIdFromSharedPref(getContext());
+        }
+
         // 初始化RecyclerView
         recyclerView = view.findViewById(R.id.recyclerView);
         recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
-        // 关键：关闭嵌套滑动优化（防止点击无响应）
         recyclerView.setNestedScrollingEnabled(false);
 
-        // ========== 修复：简化Adapter初始化，加固跳转逻辑 ==========
+        // 初始化Adapter
         adapter = new MessageAdapter(dataList, new MessageAdapter.OnItemClickListener() {
             @Override
             public void onItemClick(ChatSummary chat) {
-                // 1. 校验上下文和chat对象（防止空指针）
+                // 1. 校验上下文和chat对象
                 if (getActivity() == null || chat == null) {
                     Toast.makeText(getContext(), "跳转失败：上下文为空", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                // 2. 校验friendId（必须有值才能跳转）
+                // 2. 校验friendId
                 String friendId = chat.getFriendId();
                 if (friendId == null || friendId.isEmpty()) {
                     Toast.makeText(getContext(), "好友ID为空，无法跳转", Toast.LENGTH_SHORT).show();
@@ -67,7 +77,6 @@ public class MessageFragment extends Fragment {
                 intent.putExtra("friendName", chat.getName());
                 intent.putExtra("friendId", friendId);
                 intent.putExtra("friendAvatar", chat.getAvatarUrl());
-                // 加固：添加FLAG_ACTIVITY_NEW_TASK（防止上下文异常）
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(intent);
             }
@@ -77,9 +86,19 @@ public class MessageFragment extends Fragment {
         // 加载数据
         loadChatData();
 
+        // ========== 核心修复：正确绑定FAB并设置点击事件 ==========
+        fabAddFriend = view.findViewById(R.id.fab_add_friend);
+        fabAddFriend.setOnClickListener(v -> {
+            // 调用公共工具类，调起添加好友对话框（复用ContactsFragment的正确逻辑）
+            if (getContext() != null) {
+                FriendAddHelper.showAddFriendDialog(getContext(), myUserId);
+            }
+        });
+
         return view;
     }
 
+    // 以下原有方法保持不变（无需修改）
     private void loadChatData() {
         dataList.clear();
         if (isMock) {
@@ -89,12 +108,12 @@ public class MessageFragment extends Fragment {
         }
     }
 
-    // ========== 修复：确保mock数据的friendId有值 ==========
     private void loadMockData() {
-        // 方式1：使用带avatarUrl的构造（如果ChatSummary有这个构造）
+        if (getContext() == null) return;
+
         ChatSummary summary1 = new ChatSummary("张三", "晚上打球吗？", "18:05", R.drawable.ic_avatar_1);
-        summary1.setFriendId("1001"); // 必须设置非空的friendId
-        summary1.setAvatarUrl(""); // 空URL不影响，兜底显示本地资源
+        summary1.setFriendId("1001");
+        summary1.setAvatarUrl("");
 
         ChatSummary summary2 = new ChatSummary("李四", "项目文档发我一下", "15:30", R.drawable.ic_avatar_2);
         summary2.setFriendId("1002");
@@ -107,38 +126,49 @@ public class MessageFragment extends Fragment {
         dataList.add(summary1);
         dataList.add(summary2);
         dataList.add(summary3);
-        // 关键：使用notifyDataSetChanged刷新（确保数据生效）
         adapter.notifyDataSetChanged();
         Toast.makeText(getContext(), "加载了" + dataList.size() + "条模拟数据", Toast.LENGTH_SHORT).show();
     }
 
-    // 真实接口方法保留（无需修改）
     private void loadRecentChats() {
-        String token = getContext().getSharedPreferences("USER_INFO", 0).getString("token", "");
+        if (getContext() == null) return;
+
+        String token = NetworkUtils.getTokenFromSharedPref(getContext());
         if (token.isEmpty()) {
             Toast.makeText(getContext(), "请先登录", Toast.LENGTH_SHORT).show();
+            loadMockData(); // 未登录时加载模拟数据
             return;
         }
 
-        apiService.getChatList("Bearer " + token).enqueue(new Callback<List<ChatSummary>>() {
+        // 适配BaseResponse<List<ChatSummary>>泛型
+        apiService.getChatList(token).enqueue(new Callback<BaseResponse<List<ChatSummary>>>() {
             @Override
-            public void onResponse(Call<List<ChatSummary>> call, Response<List<ChatSummary>> response) {
-                if (response.isSuccessful()) {
-                    List<ChatSummary> result = response.body();
-                    if (result != null && !result.isEmpty()) {
-                        dataList.addAll(result);
-                        adapter.notifyDataSetChanged();
+            public void onResponse(Call<BaseResponse<List<ChatSummary>>> call, Response<BaseResponse<List<ChatSummary>>> response) {
+                if (response.isSuccessful() && response.body() != null) {
+                    BaseResponse<List<ChatSummary>> res = response.body();
+                    if (res.getCode() == 200) {
+                        List<ChatSummary> result = res.getData();
+                        if (result != null && !result.isEmpty()) {
+                            dataList.addAll(result);
+                            adapter.notifyDataSetChanged();
+                        } else {
+                            Toast.makeText(getContext(), "暂无最近聊天记录", Toast.LENGTH_SHORT).show();
+                            loadMockData(); // 无数据时加载模拟数据
+                        }
                     } else {
-                        Toast.makeText(getContext(), "暂无最近聊天记录", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(getContext(), "加载失败：" + res.getMessage(), Toast.LENGTH_SHORT).show();
+                        loadMockData();
                     }
                 } else {
                     Toast.makeText(getContext(), "加载失败：" + response.code(), Toast.LENGTH_SHORT).show();
+                    loadMockData();
                 }
             }
 
             @Override
-            public void onFailure(Call<List<ChatSummary>> call, Throwable t) {
+            public void onFailure(Call<BaseResponse<List<ChatSummary>>> call, Throwable t) {
                 Toast.makeText(getContext(), "加载失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
+                loadMockData(); // 网络失败时加载模拟数据
             }
         });
     }

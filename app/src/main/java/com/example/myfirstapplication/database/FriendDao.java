@@ -3,6 +3,7 @@ package com.example.myfirstapplication.database;
 import androidx.lifecycle.LiveData;
 import androidx.room.Dao;
 import androidx.room.Insert;
+import androidx.room.OnConflictStrategy;
 import androidx.room.Query;
 import androidx.room.Update;
 
@@ -12,11 +13,19 @@ import java.util.List;
 
 @Dao
 public interface FriendDao {
-    // 插入好友
+    // 核心修复：添加 insertOrUpdate 方法（冲突时替换，实现插入/更新）
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    void insertOrUpdate(Friend friend);
+
+    // 批量插入/更新（可选，优化批量同步效率）
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    void insertOrUpdateBatch(List<Friend> friends);
+
+    // 原有插入方法（保留，按需使用）
     @Insert
     void insert(Friend friend);
 
-    // 修复：实现update方法（Room会自动生成）
+    // 原有更新方法（保留）
     @Update
     void update(Friend friend);
 
@@ -24,7 +33,7 @@ public interface FriendDao {
     @Query("SELECT * FROM friends WHERE myId = :myId")
     LiveData<List<Friend>> getAllFriends(String myId);
 
-    // 修复：补充业务代码中调用的getMyFriends方法（和getAllFriends逻辑一致）
+    // 业务代码调用的 getMyFriends 方法
     @Query("SELECT * FROM friends WHERE myId = :myId")
     LiveData<List<Friend>> getMyFriends(String myId);
 

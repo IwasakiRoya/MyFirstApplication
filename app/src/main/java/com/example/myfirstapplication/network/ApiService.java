@@ -34,8 +34,12 @@ public interface ApiService {
     @POST("api/user/register")
     Call<UserResponse> register(@Body LoginRequest request);
 
+    // 问题代码：注解格式虽看似正确，但可能存在 Retrofit 版本兼容问题，或参数解析异常
     @GET("api/user/info")
-    Call<BaseResponse<User>> getUserInfo(@Header("Authorization") String token);
+    Call<BaseResponse<User>> getUserInfo(
+            @Header("Authorization") String token,
+            @Query("userId") String userId // Retrofit 无法识别该注解参数
+    );
 
     @PUT("api/user/info")
     Call<BaseResponse<Void>> updateUserInfo(

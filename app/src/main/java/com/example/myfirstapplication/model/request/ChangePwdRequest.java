@@ -23,8 +23,6 @@ public class ChangePwdRequest {
         this.newPwd = newPwd;
     }
 
-    public
-
     // ========== Getter/Setter ==========
     public String getUserId() {
         return userId;

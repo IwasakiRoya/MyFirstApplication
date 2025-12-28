@@ -5,30 +5,40 @@ import androidx.room.Entity;
 import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
-/**
- * 聊天消息实体（完全对齐后端ChatMessage）
- */
+import java.util.Objects;
 
-@Entity(tableName = "messages") // 匹配后端数据库表名
+/**
+ * 聊天消息实体（完全对齐后端原始数据，添加联合唯一约束避免重复，补充 equals/hashCode 确保实例可追踪）
+ */
+@Entity(
+        tableName = "messages",
+        // 核心：联合唯一约束，基于「内容+时间戳+发送者ID+好友ID」避免重复消息
+        indices = {
+                @androidx.room.Index(
+                        value = {"content", "timestamp", "userId", "friendId"},
+                        unique = true
+                )
+        }
+)
 public class ChatMessage {
     // 主键（自动生成，匹配后端Integer类型）
     @PrimaryKey(autoGenerate = true)
-    private Integer id;          // 消息ID（后端：Integer → 前端用Integer）
+    public Integer id;          // 消息ID（后端原始字段）
 
-    private String friendId;     // 好友ID（后端：friend_id）
-    private String content;      // 消息内容（后端：content）
-    private Integer type;        // 消息类型：0=接收，1=发送（后端：type）
-    private Long timestamp;      // 时间戳（后端：timestamp）
-    private Integer status;      // 消息状态：0=成功，1=思考中，2=失败（后端：status）
-    private String userId;       // 发送者ID（后端新增字段：user_id）
+    public String friendId;     // 好友ID（后端原始字段：friend_id）
+    public String content;      // 消息内容（后端原始字段：content）
+    public Integer type;        // 消息类型（后端原始字段：type，仅作为备份，前端优先基于userId判断）
+    public Long timestamp;      // 时间戳（后端原始字段：timestamp）
+    public Integer status;      // 消息状态（后端原始字段：status）
+    public String userId;       // 发送者ID（后端原始字段：user_id，核心判断依据）
 
-    // 消息类型常量（完全匹配后端）
+    // 消息类型常量（与后端对齐，仅用于展示层判断）
     public static final int TYPE_SENT = 1;       // 我方发送
     public static final int TYPE_RECEIVED = 0;   // 对方接收
 
-    // 消息状态常量（完全匹配后端）
+    // 消息状态常量（与后端对齐）
     public static final int STATUS_SUCCESS = 0;   // 成功
-    public static final int STATUS_THINKING = 1;  // AI思考中
+    public static final int STATUS_THINKING = 1;  // 发送中
     public static final int STATUS_FAILED = 2;    // 失败
 
     // Room必需的无参构造
@@ -45,7 +55,7 @@ public class ChatMessage {
         this.timestamp = System.currentTimeMillis();
     }
 
-    // ========== 全字段Getter/Setter（必须和后端字段名一致） ==========
+    // ========== 全字段Getter/Setter（保持与后端原始字段一致，不做修改） ==========
     public Integer getId() {
         return id;
     }
@@ -100,5 +110,19 @@ public class ChatMessage {
 
     public void setUserId(String userId) {
         this.userId = userId;
+    }
+
+    // ========== 核心补充：重写 equals/hashCode，以 id 为唯一标识，确保 indexOf() 可追踪 ==========
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ChatMessage that = (ChatMessage) o;
+        return Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
     }
 }

@@ -12,18 +12,18 @@ import androidx.room.PrimaryKey;
 public class User {
     @PrimaryKey
     @NonNull
-    private String userId;       // 用户ID（后端：user_id）
-    private String username;     // 登录账号（后端：username）
-    private String password;     // 加密密码（后端：password → 前端本地不存储）
-    private Long phoneNumber;    // 手机号（后端：phone_number → Long类型）
-    private String nickname;     // 昵称（后端：nickname）
-    private String avatarUrl;    // 头像地址（后端：avatar_url）
-    private String signature;    // 个性签名（后端：signature）
-    private String aiPrompt;     // AI人设（后端：ai_prompt）
-    private String apiKey;       // AI接口Key（后端：api_key）
-    private String aiModel;      // AI模型（后端：ai_model）
-    private String token;        // 登录Token（后端：token）
-    private Long lastLoginTime;  // 上次登录时间戳（后端：last_login_time）
+    public String userId;       // 用户ID（后端：user_id）
+    public String username;     // 登录账号（后端：username）
+    public String password;     // 加密密码（后端：password → 前端本地不存储）
+    public Long phoneNumber;    // 手机号（后端：phone_number → Long类型）
+    public String nickname;     // 昵称（后端：nickname）
+    public String avatarUrl;    // 头像地址（后端：avatar_url）
+    public String signature;    // 个性签名（后端：signature）
+    public String aiPrompt;     // AI人设（后端：ai_prompt）
+    public String apiKey;       // AI接口Key（后端：api_key）
+    public String aiModel;      // AI模型（后端：ai_model）
+    public String token;        // 登录Token（后端：token）
+    public Long lastLoginTime;  // 上次登录时间戳（后端：last_login_time）
 
     // Room必需的无参构造
     public User() {

@@ -80,18 +80,18 @@ public class FriendRequestActivity extends AppCompatActivity {
                             rvRequests.setAdapter(null); // 清空适配器
                             return;
                         }
-                        // 初始化适配器
+                        // 初始化适配器时传入token
                         adapter = new FriendRequestAdapter(requests, new FriendRequestAdapter.OnRequestListener() {
                             @Override
                             public void onAccept(FriendRequestEntity request) {
-                                handleRequest(request, FriendRequestEntity.STATUS_AGREE); // 对齐后端常量
+                                handleRequest(request, FriendRequestEntity.STATUS_AGREE);
                             }
 
                             @Override
                             public void onReject(FriendRequestEntity request) {
-                                handleRequest(request, FriendRequestEntity.STATUS_REJECT); // 对齐后端常量
+                                handleRequest(request, FriendRequestEntity.STATUS_REJECT);
                             }
-                        });
+                        }, token); // 新增传入token参数
                         rvRequests.setAdapter(adapter);
                     }
                 });
@@ -104,7 +104,7 @@ public class FriendRequestActivity extends AppCompatActivity {
         handleRequest.setStatus(status);
 
         // 2. 调用后端接口处理好友请求
-        apiService.handleFriendRequest("Bearer " + token, handleRequest)
+        apiService.handleFriendRequest(token, handleRequest)
                 .enqueue(new Callback<BaseResponse<Void>>() {
                     @Override
                     public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
@@ -167,7 +167,7 @@ public class FriendRequestActivity extends AppCompatActivity {
      */
     private void getRemoteUserInfo(String userId, Friend friend) {
         // 核心适配：把userId作为keyword传给searchUser接口
-        apiService.searchUser("Bearer " + token, userId)
+        apiService.searchUser(token, userId)
                 .enqueue(new Callback<BaseResponse<User>>() {
                     @Override
                     public void onResponse(Call<BaseResponse<User>> call, Response<BaseResponse<User>> response) {
