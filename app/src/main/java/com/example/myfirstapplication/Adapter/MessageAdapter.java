@@ -14,6 +14,7 @@ import com.bumptech.glide.request.RequestOptions;
 import com.example.myfirstapplication.R;
 import com.example.myfirstapplication.model.ChatSummary;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHolder> {
@@ -47,6 +48,18 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
         holder.tvName.setText(item.getName());
         holder.tvLastMsg.setText(item.getLastMessage());
         holder.tvTime.setText(item.getTime());
+
+        // ========== 核心修复：适配前后端未读数字段类型（Long → int） ==========
+        long unreadCountLong = Math.max(item.getUnreadCount(), 0);
+        int unreadCount = (int) Math.min(unreadCountLong, 99); // 限制最大为99，避免显示异常
+
+        if (unreadCount > 0) {
+            holder.tvUnreadBadge.setVisibility(View.VISIBLE);
+            // 未读数超过99显示"99+"
+            holder.tvUnreadBadge.setText(unreadCount > 99 ? "99+" : String.valueOf(unreadCount));
+        } else {
+            holder.tvUnreadBadge.setVisibility(View.GONE);
+        }
 
         // 头像加载逻辑优化
         RequestOptions options = new RequestOptions()
@@ -84,7 +97,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
-        TextView tvName, tvLastMsg, tvTime;
+        TextView tvName, tvLastMsg, tvTime, tvUnreadBadge; // 新增 tvUnreadBadge
         ImageView ivAvatar;
 
         ViewHolder(View itemView) {
@@ -93,6 +106,8 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
             tvLastMsg = itemView.findViewById(R.id.tv_last_msg);
             tvTime = itemView.findViewById(R.id.tv_time);
             ivAvatar = itemView.findViewById(R.id.iv_avatar);
+            // 核心新增：绑定小红点控件
+            tvUnreadBadge = itemView.findViewById(R.id.tv_unread_badge);
         }
     }
 
@@ -107,8 +122,9 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
         }
     }
 
+    // 核心修复：新增updateData方法，确保列表数据替换后正确刷新
     public void updateData(List<ChatSummary> newList) {
-        this.list = newList;
-        notifyDataSetChanged();
+        this.list = newList != null ? newList : new ArrayList<>(); // 兜底空列表
+        notifyDataSetChanged(); // 单次刷新即可，无需额外调用
     }
 }

@@ -39,4 +39,19 @@ public interface ChatDao {
     // 新增：删除好友所有消息（用于重置，可选）
     @Query("DELETE FROM messages WHERE friendId = :friendId")
     void deleteAllMessagesByFriend(String friendId);
+
+    // ========== 核心新增：未读消息查询方法 ==========
+    /**
+     * 查询当前用户与指定好友的未读消息数（对方发送的、未被标记为已读的消息）
+     */
+    @Query("SELECT COUNT(*) FROM messages WHERE " +
+            "userId = :friendId AND friendId = :currentUserId " + // 对方发送的消息
+            "AND timestamp > COALESCE((SELECT lastReadTime FROM chat_read_position WHERE friendId = :friendId AND userId = :currentUserId), 0)")
+    int getUnreadMsgCount(String currentUserId, String friendId);
+
+    /**
+     * 标记与指定好友的所有消息为已读（更新阅读时间戳）
+     */
+    @Query("UPDATE chat_read_position SET lastReadTime = :currentTime WHERE friendId = :friendId AND userId = :currentUserId")
+    void markChatAsRead(String currentUserId, String friendId, long currentTime);
 }

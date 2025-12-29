@@ -16,6 +16,7 @@ import android.widget.EditText;
 import android.widget.Switch;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -67,12 +68,28 @@ public class ChatActivity extends AppCompatActivity {
     private ChatReadPosition readPosition;
     private LinearLayoutManager layoutManager;
 
+    // ========== 核心新增：轮询相关变量（优化轮询逻辑） ==========
+    private Handler pollHandler; // 轮询处理器
+    private Runnable pollRunnable; // 轮询任务
+    private static final long POLL_INTERVAL = 500; // 轮询间隔缩短为500ms，提升实时性
+    private boolean isPolling = false; // 轮询开关（防止页面销毁后继续轮询）
+    private long lastPullTimestamp = 0; // 记录最后一次拉取消息的时间戳，避免重复拉取
+
+    // ========== 核心新增：已读/未读核心变量（解决渲染消息标记已读问题） ==========
+    private long lastRenderedMessageTimestamp = 0; // 最新已渲染（可见）消息的时间戳（临界点）
+    private boolean isChatPageVisible = true; // 聊天页面是否可见（避免后台操作标记已读）
+
+    // ========== 新增核心变量 ==========
+    private boolean isUserScrollingToHistory = false; // 是否用户主动向上滚动查看历史消息
+    private int lastScrollY = 0; // 记录上一次滚动的Y轴偏移量，用于判断滚动方向
+
     // ========= 广播 =========
     private final BroadcastReceiver chatRefreshReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String refreshFriendId = intent.getStringExtra("friendId");
             if (friendId != null && friendId.equals(refreshFriendId)) {
+                // 收到广播，立即拉取新消息（非首次加载）
                 loadChatHistory(false);
             }
         }
@@ -101,7 +118,7 @@ public class ChatActivity extends AppCompatActivity {
         initView();
         initListener();
 
-        // 后续逻辑不变
+        // 注册广播接收器（接收外部刷新通知）
         IntentFilter filter = new IntentFilter("com.example.REFRESH_CHAT");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(chatRefreshReceiver, filter, RECEIVER_NOT_EXPORTED);
@@ -111,7 +128,179 @@ public class ChatActivity extends AppCompatActivity {
 
         // 首次加载历史聊天记录
         loadChatHistory(true);
+        // ========== 核心修复：初始化轮询任务（优化实时性） ==========
+        initPollingTask();
     }
+
+    /**
+     * 核心修复：初始化消息轮询任务（实时刷新新消息，修复轮询逻辑漏洞）
+     */
+    private void initPollingTask() {
+        pollHandler = new Handler(Looper.getMainLooper());
+        pollRunnable = new Runnable() {
+            @Override
+            public void run() {
+                // 校验：轮询开启、页面未销毁、未退出
+                if (isPolling && !isFinishing() && !isDestroyed() && !token.isEmpty()) {
+                    // 轮询拉取新消息（非首次加载，仅拉取最新消息）
+                    loadChatHistory(false);
+
+                    // 继续下一次轮询（确保轮询不中断）
+                    pollHandler.postDelayed(this, POLL_INTERVAL);
+                }
+            }
+        };
+    }
+
+    // ChatActivity.java - onResume 方法修改
+    @Override
+    protected void onResume() {
+        super.onResume();
+        isChatPageVisible = true; // 标记页面可见
+        // 重置滚动标记（回到聊天页面，默认不处于查看历史消息状态）
+        isUserScrollingToHistory = false;
+        lastScrollY = 0;
+        // 开启轮询（核心修复：立即执行第一次轮询，无延迟）
+        if (!isPolling) {
+            isPolling = true;
+            if (pollHandler != null && pollRunnable != null) {
+                // 立即执行一次轮询，然后再按间隔轮询（提升实时性）
+                pollHandler.post(pollRunnable);
+            }
+        }
+
+        // 进入聊天页面，先刷新UI，再标记已读（确保渲染完成后获取最新可见消息）
+        refreshUI(false);
+        // 延迟标记已读，确保RecyclerView已渲染完成
+        mainHandler.postDelayed(() -> markCurrentRenderedMessagesAsRead(), 300);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        isChatPageVisible = false; // 标记页面不可见
+        // 停止轮询
+        if (isPolling) {
+            isPolling = false;
+            if (pollHandler != null && pollRunnable != null) {
+                pollHandler.removeCallbacks(pollRunnable);
+            }
+        }
+
+        // 核心新增：页面退出/暂停时，标记当前已渲染消息为已读（解决退出后仍显示未读）
+        markCurrentRenderedMessagesAsRead();
+    }
+
+    // ========== 核心新增：标记当前已渲染（可见）消息为已读 ==========
+    /**
+     * 标记当前RecyclerView中可见的最新消息为已读（核心逻辑）
+     */
+    private void markCurrentRenderedMessagesAsRead() {
+        if (messageList.isEmpty() || friendId.isEmpty() || userId.isEmpty() || token.isEmpty()) {
+            return;
+        }
+
+        // 步骤1：更新最新已渲染消息的时间戳（获取可见的最新消息）
+        updateLastRenderedMessageTimestamp();
+
+        // 步骤2：本地标记已读 + 同步后端阅读位置
+        DbExecutor.execute(() -> {
+            long currentRenderedTs = lastRenderedMessageTimestamp;
+            if (currentRenderedTs <= 0) {
+                currentRenderedTs = System.currentTimeMillis();
+            }
+
+            // 1. 更新本地阅读时间
+            db.chatDao().markChatAsRead(userId, friendId, currentRenderedTs);
+
+            // 2. 获取最新消息ID（用于后端更新阅读位置）
+            List<ChatMessage> latestMsgList = db.chatDao().getChatMessagesByTwoUsers(userId, friendId);
+            int latestMsgId = 0;
+            if (!latestMsgList.isEmpty()) {
+                ChatMessage latestMsg = latestMsgList.get(latestMsgList.size() - 1);
+                latestMsgId = latestMsg.getId() != null ? latestMsg.getId() : 0;
+            }
+
+            // 3. 同步更新后端阅读位置（传递最新已渲染时间戳，精准标记已读）
+            updateBackendReadPosition(latestMsgId, currentRenderedTs);
+
+            // 4. 发送广播，通知MessageFragment刷新列表和小红点
+            sendChatRefreshBroadcast(friendId);
+        });
+    }
+
+    /**
+     * 更新最新已渲染（可见）消息的时间戳（临界点：该时间戳之前的消息视为已读）
+     */
+    private void updateLastRenderedMessageTimestamp() {
+        if (rvChat == null || layoutManager == null || messageList.isEmpty()) {
+            return;
+        }
+
+        // 步骤1：获取RecyclerView中最后一个完全可见的消息位置（用户真正看到的最新消息）
+        int lastVisiblePos = layoutManager.findLastCompletelyVisibleItemPosition();
+        if (lastVisiblePos == -1 || lastVisiblePos >= messageList.size()) {
+            // 无完全可见消息，获取最后一个可见项兜底
+            lastVisiblePos = layoutManager.findLastVisibleItemPosition();
+            if (lastVisiblePos == -1 || lastVisiblePos >= messageList.size()) {
+                return;
+            }
+        }
+
+        // 步骤2：获取该位置的消息，更新最新已渲染时间戳
+        ChatMessage lastRenderedMessage = messageList.get(lastVisiblePos);
+        if (lastRenderedMessage != null && lastRenderedMessage.getTimestamp() != null) {
+            // 仅保留最新的时间戳（避免回滚到历史消息的旧时间戳）
+            if (lastRenderedMessage.getTimestamp() > lastRenderedMessageTimestamp) {
+                lastRenderedMessageTimestamp = lastRenderedMessage.getTimestamp();
+            }
+        }
+    }
+
+// ChatActivity.java - 新增后端阅读位置更新方法
+    /**
+     * 调用后端接口，更新后端 ChatReadPosition 表的阅读位置（传递最新已渲染时间戳）
+     */
+    private void updateBackendReadPosition(int latestMsgId, long currentTime) {
+        if (token.isEmpty() || friendId.isEmpty() || userId.isEmpty()) {
+            return;
+        }
+
+        // 调用后端 /api/chat/read 接口（对应 ChatController 的 updateReadPosition 方法）
+        String authToken = token;
+        apiService.updateReadPosition(authToken, friendId, latestMsgId)
+                .enqueue(new Callback<BaseResponse<Void>>() {
+                    @Override
+                    public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
+                        if (!response.isSuccessful() || response.body() == null || response.body().getCode() != 200) {
+                            mainHandler.post(() -> {
+                                Toast.makeText(ChatActivity.this, "同步已读状态到服务器失败", Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Call<BaseResponse<Void>> call, Throwable t) {
+                        mainHandler.post(() -> {
+                            Toast.makeText(ChatActivity.this, "网络异常，同步已读状态失败", Toast.LENGTH_SHORT).show();
+                        });
+                    }
+                });
+    }
+
+    /**
+     * 发送聊天刷新广播（通知MessageFragment更新对应聊天项的摘要和小红点）
+     */
+    private void sendChatRefreshBroadcast(String refreshFriendId) {
+        Intent intent = new Intent("com.example.REFRESH_CHAT");
+        intent.putExtra("friendId", refreshFriendId);
+
+        // 核心：限定广播仅在当前应用内传递，提升安全性
+        intent.setPackage(getPackageName());
+        // 发送全局广播（仅本应用内可接收）
+        sendBroadcast(intent);
+    }
+
     /**
      * 初始化视图控件
      */
@@ -134,9 +323,56 @@ public class ChatActivity extends AppCompatActivity {
         layoutManager.setStackFromEnd(true);
         rvChat.setLayoutManager(layoutManager);
 
-        // 初始化聊天适配器（传递头像+当前用户ID参数，核心修复：解决消息类型判断错误）
+        // 初始化聊天适配器（传递头像+当前用户ID参数）
         chatAdapter = new ChatAdapter(messageList, currentUserAvatar, friendAvatar, userId);
         rvChat.setAdapter(chatAdapter);
+
+        // ========== 核心修改：完善RecyclerView滚动监听器，判断用户是否查看历史消息 ==========
+        rvChat.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
+                super.onScrollStateChanged(recyclerView, newState);
+                // 1. 滚动停止时，更新滚动状态标记
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    // 若用户滚动到列表顶部（历史消息最前方），或未回到底部，标记为「正在查看历史消息」
+                    int firstVisiblePos = layoutManager.findFirstVisibleItemPosition();
+                    int lastVisiblePos = layoutManager.findLastVisibleItemPosition();
+                    int totalItemCount = layoutManager.getItemCount();
+
+                    // 判定条件：① 滚动到顶部 ② 未滚动到最底部 ③ 不是刚加载完成的默认状态
+                    isUserScrollingToHistory = (firstVisiblePos == 0)
+                            || (lastVisiblePos != totalItemCount - 1 && totalItemCount > 0);
+
+                    // 滚动停止后，更新已渲染消息时间戳（避免滚动过程中频繁触发）
+                    if (isChatPageVisible) {
+                        updateLastRenderedMessageTimestamp();
+                        // 延迟标记已读，确保滚动稳定
+                        mainHandler.postDelayed(() -> markCurrentRenderedMessagesAsRead(), 200);
+                    }
+                } else if (newState == RecyclerView.SCROLL_STATE_DRAGGING) {
+                    // 2. 用户主动拖动时，记录滚动方向
+                    int currentScrollY = recyclerView.computeVerticalScrollOffset();
+                    // 向上滚动（查看历史消息）：当前滚动偏移量 < 上一次滚动偏移量
+                    isUserScrollingToHistory = (currentScrollY < lastScrollY) && (lastScrollY > 0);
+                    lastScrollY = currentScrollY;
+                }
+            }
+
+            @Override
+            public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy) {
+                super.onScrolled(recyclerView, dx, dy);
+                // dy < 0 ：向上滚动（查看历史消息）；dy > 0 ：向下滚动（回到最新消息）
+                if (dy < 0) {
+                    isUserScrollingToHistory = true;
+                } else if (dy > 0 && layoutManager.findLastCompletelyVisibleItemPosition() == messageList.size() - 1) {
+                    // 向下滚动且回到最底部，取消「查看历史消息」标记
+                    isUserScrollingToHistory = false;
+                    updateLastRenderedMessageTimestamp();
+                }
+                // 更新滚动偏移量
+                lastScrollY = recyclerView.computeVerticalScrollOffset();
+            }
+        });
 
         // 隐藏AI开关（暂未实现）
         switchAi.setVisibility(View.GONE);
@@ -179,6 +415,10 @@ public class ChatActivity extends AppCompatActivity {
                 db.chatReadPositionDao().insertOrUpdate(readPosition);
             }
         });
+
+        // 初始化滚动标记变量
+        isUserScrollingToHistory = false;
+        lastScrollY = 0;
     }
 
     /**
@@ -213,8 +453,8 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     /**
-     * 加载聊天历史记录（核心优化：解决对方消息不显示+重复消息+跨用户无数据问题）
-     * @param firstLoad 是否为首次加载（首次加载全量数据，非首次加载拉取新消息）
+     * 核心修复：加载聊天历史记录（解决对方消息不显示+重复消息+实时刷新问题）
+     * @param firstLoad 是否为首次加载（首次加载全量数据，非首次加载拉取最新消息）
      */
     private void loadChatHistory(boolean firstLoad) {
         // 核心优化1：添加Token校验，避免无权限获取消息
@@ -224,14 +464,19 @@ public class ChatActivity extends AppCompatActivity {
             return;
         }
 
-        // 核心优化2：修复lastTs逻辑，首次加载强制传0（确保后端返回全量消息），非首次取最新消息的timestamp
+        // 核心优化2：修复lastTs逻辑（首次加载传0，非首次传最后一次拉取的时间戳，避免重复拉取）
         long lastTs = 0;
-        if (!firstLoad && !messageList.isEmpty()) {
-            ChatMessage latestMsg = messageList.get(messageList.size() - 1);
-            lastTs = (latestMsg.getTimestamp() == null) ? 0 : latestMsg.getTimestamp();
+        if (!firstLoad) {
+            // 非首次加载：使用最后一次拉取的时间戳，仅拉取新消息
+            lastTs = lastPullTimestamp;
+            // 兜底：如果消息列表不为空，使用最新消息的时间戳
+            if (!messageList.isEmpty() && lastTs == 0) {
+                ChatMessage latestMsg = messageList.get(messageList.size() - 1);
+                lastTs = (latestMsg.getTimestamp() == null) ? 0 : latestMsg.getTimestamp();
+            }
         }
 
-        // 调用后端接口获取聊天记录（后端无Bearer前缀，直接传token，无需拼接）
+        // 调用后端接口获取聊天记录（后端无Bearer前缀，直接传token）
         String authToken = token;
         apiService.getChatHistory(authToken, friendId, lastTs)
                 .enqueue(new Callback<BaseResponse<List<ChatMessage>>>() {
@@ -257,7 +502,7 @@ public class ChatActivity extends AppCompatActivity {
                                             m.setFriendId(friendId); // 兜底设置friendId，确保查询有效
                                         }
 
-                                        // 步骤2：唯一性校验，已存在的消息直接跳过，避免重复（依赖ChatDao的getMessageByUniqueKey）
+                                        // 步骤2：唯一性校验，已存在的消息直接跳过，避免重复
                                         ChatMessage existingMsg = db.chatDao().getMessageByUniqueKey(
                                                 m.getContent(), m.getTimestamp(), m.getUserId(), m.getFriendId()
                                         );
@@ -265,24 +510,40 @@ public class ChatActivity extends AppCompatActivity {
                                             continue;
                                         }
 
-                                        // 步骤3：核心修复：强制按userId区分消息类型，忽略后端无效type字段
+                                        // 步骤3：修复消息类型判断，确保对方消息正确渲染
                                         boolean isCurrentUserMsg = userId.equals(m.getUserId());
-                                        // 添加日志，验证匹配结果
-                                        android.util.Log.d("ChatActivityDebug", "当前登录userId: " + userId + ", 消息userId: " + m.getUserId() + ", 匹配结果：" + isCurrentUserMsg);
-
                                         if (isCurrentUserMsg) {
                                             m.setType(ChatMessage.TYPE_SENT); // 我方消息：1
                                             m.setStatus(ChatMessage.STATUS_SUCCESS); // 我方消息默认成功，避免转圈
                                         } else {
-                                            m.setType(ChatMessage.TYPE_RECEIVED); // 对方消息（用户2）：0
+                                            m.setType(ChatMessage.TYPE_RECEIVED); // 对方消息：0
                                             m.setStatus(ChatMessage.STATUS_SUCCESS); // 对方消息直接成功，隐藏转圈
                                         }
 
-                                        // 步骤4：使用IGNORE去重，已存在唯一约束的消息直接忽略
+                                        // 步骤4：插入数据库（IGNORE去重，避免重复消息）
                                         long insertResult = db.chatDao().insert(m);
                                     }
+
+                                    // 核心修复：更新最后一次拉取的时间戳（避免下次重复拉取）
+                                    if (!data.isEmpty()) {
+                                        ChatMessage latestNewMsg = data.get(data.size() - 1);
+                                        lastPullTimestamp = latestNewMsg.getTimestamp() != null ? latestNewMsg.getTimestamp() : System.currentTimeMillis();
+                                    }
+
                                     // 刷新UI（确保拉取的消息更新到界面）
                                     refreshUI(firstLoad);
+
+                                    // 核心新增：刷新UI后，更新已渲染消息并标记已读（实时接收新消息后立即标记）
+                                    if (isChatPageVisible) {
+                                        mainHandler.postDelayed(() -> {
+                                            updateLastRenderedMessageTimestamp();
+                                            markCurrentRenderedMessagesAsRead();
+                                            // 新消息加载完成后，若用户未查看历史消息，才滚动到最底部
+                                            if (!isUserScrollingToHistory && !messageList.isEmpty()) {
+                                                rvChat.scrollToPosition(messageList.size() - 1);
+                                            }
+                                        }, 200);
+                                    }
                                 });
                             } else {
                                 // 无新数据，直接刷新UI
@@ -306,7 +567,7 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     /**
-     * 刷新聊天界面UI（核心优化：确保对方消息渲染+消息排序+聊天页显示最新数据）
+     * 核心修复：刷新聊天界面UI（确保对方消息渲染+消息排序+实时显示最新数据）
      * @param firstLoad 是否为首次加载（首次加载滚动到最底部）
      */
     private void refreshUI(boolean firstLoad) {
@@ -347,16 +608,22 @@ public class ChatActivity extends AppCompatActivity {
             final List<ChatMessage> finalLatest = sortedMessages;
             final boolean finalFirstLoad = firstLoad;
 
-            // 主线程更新UI（避免跨线程操作视图）
+            // 主线程更新UI（避免跨线程操作视图，确保实时性）
             mainHandler.post(() -> {
-                messageList.clear();
-                messageList.addAll(finalLatest); // 引用final临时变量
-                chatAdapter.notifyDataSetChanged();
+                // 核心修复：先对比消息列表是否有变化，再更新（避免不必要的刷新）
+                if (!messageList.equals(finalLatest)) {
+                    messageList.clear();
+                    messageList.addAll(finalLatest);
+                    chatAdapter.notifyDataSetChanged();
+                }
 
-                // 首次加载时滚动到最底部（修复：正确滚动到最后一条消息）
-                if (finalFirstLoad && !messageList.isEmpty()) {
+                // 核心修改：仅当「用户未主动查看历史消息」时，才滚动到最底部
+                if ((finalFirstLoad || !finalLatest.isEmpty()) && rvChat.getAdapter() != null && !isUserScrollingToHistory) {
                     rvChat.scrollToPosition(messageList.size() - 1);
                 }
+
+                // 滚动完成后，更新最新已渲染消息时间戳
+                updateLastRenderedMessageTimestamp();
             });
         });
     }
@@ -390,7 +657,14 @@ public class ChatActivity extends AppCompatActivity {
                 int newMsgPosition = messageList.size();
                 messageList.add(msg);
                 chatAdapter.notifyItemInserted(newMsgPosition);
+
+                // 核心修改：发送消息时，强制滚动到最底部（忽略历史消息查看状态）
                 rvChat.scrollToPosition(newMsgPosition);
+                // 重置滚动标记，恢复默认状态（后续新消息仍可正常自动滚动）
+                isUserScrollingToHistory = false;
+
+                // 发送后更新已渲染消息时间戳（改为标记所有消息为已读）
+                updateLastRenderedMessageToLatest(msg.getTimestamp());
             });
 
             // 步骤4：调用后端接口发送消息到服务器（后端无Bearer前缀，直接传token）
@@ -422,7 +696,20 @@ public class ChatActivity extends AppCompatActivity {
                                     } else {
                                         chatAdapter.notifyDataSetChanged();
                                     }
-                                    rvChat.scrollToPosition(messageList.size() - 1);
+
+                                    // 核心修改：仅当「用户未主动查看历史消息」时，才滚动到最底部
+                                    if (!isUserScrollingToHistory) {
+                                        rvChat.scrollToPosition(messageList.size() - 1);
+                                    }
+
+                                    // 核心修复：更新最后一次拉取时间戳，确保轮询能拉取后续消息
+                                    lastPullTimestamp = System.currentTimeMillis();
+
+                                    // 核心新增：发送成功后，标记已渲染消息为已读
+                                    markCurrentRenderedMessagesAsRead();
+
+                                    // 发送广播，通知消息列表刷新
+                                    sendChatRefreshBroadcast(friendId);
                                 });
                             });
                         }
@@ -449,6 +736,18 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     /**
+     * 发送消息时，标记所有消息为已读（直接更新为最新消息时间戳，覆盖中间所有消息）
+     * @param latestTimestamp 最新消息（发送消息）的时间戳
+     */
+    private void updateLastRenderedMessageToLatest(Long latestTimestamp) {
+        if (latestTimestamp == null) {
+            latestTimestamp = System.currentTimeMillis();
+        }
+        // 直接将临界点设为最新消息时间戳，所有早于该时间的消息都视为已读
+        lastRenderedMessageTimestamp = latestTimestamp;
+    }
+
+    /**
      * 页面销毁时释放资源
      */
     @Override
@@ -461,5 +760,8 @@ public class ChatActivity extends AppCompatActivity {
 
         // 移除所有未执行的Handler回调，避免内存泄漏
         mainHandler.removeCallbacksAndMessages(null);
+        if (pollHandler != null) {
+            pollHandler.removeCallbacksAndMessages(null);
+        }
     }
 }

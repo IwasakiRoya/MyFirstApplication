@@ -5,20 +5,31 @@
     android:padding="12dp"
     android:background="?android:attr/selectableItemBackground">
 
+    <!-- 头像：保持原有约束，垂直居中+靠左 -->
     <ImageView
         android:id="@+id/iv_avatar"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:src="@mipmap/ic_launcher_round" /> <TextView
-    android:id="@+id/tv_name"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_toRightOf="@id/iv_avatar"
-    android:layout_marginLeft="12dp"
-    android:text="好友名称"
-    android:textSize="16sp"
-    android:textColor="#000000" />
+        android:src="@mipmap/ic_launcher_round"
+        android:layout_centerVertical="true"
+        android:layout_alignParentStart="true"
+        android:scaleType="centerCrop"/>
 
+    <!-- 好友名称：移除垂直居中，改为顶部对齐，与头像右侧间距12dp -->
+    <TextView
+        android:id="@+id/tv_name"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_toRightOf="@id/iv_avatar"
+        android:layout_marginLeft="12dp"
+        android:layout_marginTop="4dp"
+        android:maxWidth="200dp"
+        android:text="好友名称"
+        android:textSize="16sp"
+        android:textColor="#000000"
+        android:maxLines="1"/>
+
+    <!-- 最后一条消息：在名称下方，保持间距，正常显示不被遮挡 -->
     <TextView
         android:id="@+id/tv_last_msg"
         android:layout_width="wrap_content"
@@ -27,17 +38,40 @@
         android:layout_below="@id/tv_name"
         android:layout_marginLeft="12dp"
         android:layout_marginTop="4dp"
+        android:maxWidth="200dp"
         android:text="最后一条消息内容..."
         android:textColor="#888888"
+        android:textSize="14sp"
         android:maxLines="1"
-        android:ellipsize="end" />
+        android:ellipsize="end"/>
 
+    <!-- 时间：右上角，顶部对齐，与右侧间距8dp -->
     <TextView
         android:id="@+id/tv_time"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentRight="true"
+        android:layout_marginTop="8dp"
+        android:layout_marginRight="8dp"
         android:text="12:00"
         android:textSize="12sp"
-        android:textColor="#BBBBBB" />
+        android:textColor="#BBBBBB"/>
+
+    <!-- 未读小红点：时间下方，右侧对齐，优化间距避免超出 -->
+    <TextView
+        android:id="@+id/tv_unread_badge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentRight="true"
+        android:layout_below="@+id/tv_time"
+        android:layout_marginRight="8dp"
+        android:layout_marginTop="2dp"
+        android:background="@drawable/shape_red_badge"
+        android:gravity="center"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:visibility="gone"
+        android:minWidth="16dp"
+        android:minHeight="16dp"/>
+
 </RelativeLayout>

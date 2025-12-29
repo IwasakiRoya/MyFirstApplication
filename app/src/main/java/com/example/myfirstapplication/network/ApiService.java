@@ -76,6 +76,7 @@ public interface ApiService {
             @Query("lastTimestamp") long lastTimestamp
     );
 
+    // ApiService.java - 新增接口
     @POST("api/chat/read")
     Call<BaseResponse<Void>> updateReadPosition(
             @Header("Authorization") String token,
@@ -91,6 +92,8 @@ public interface ApiService {
 
     @GET("api/chat/list")
     Call<BaseResponse<List<ChatSummary>>> getChatList(@Header("Authorization") String token);
+
+
 
     // ========== 好友相关 ==========
     @POST("api/friend/request")
