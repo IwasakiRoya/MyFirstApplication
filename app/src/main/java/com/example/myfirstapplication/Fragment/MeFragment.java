@@ -1,5 +1,6 @@
 package com.example.myfirstapplication.Fragment;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -18,6 +19,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
@@ -29,13 +32,17 @@ import com.example.myfirstapplication.model.User;
 import com.example.myfirstapplication.model.request.ChangePwdRequest;
 import com.example.myfirstapplication.model.response.BaseResponse;
 import com.example.myfirstapplication.model.response.ChangePwdResponse;
-import com.example.myfirstapplication.model.response.UserResponse;
 import com.example.myfirstapplication.network.ApiService;
+import com.example.myfirstapplication.utils.FileUtils;
 import com.example.myfirstapplication.utils.NetworkUtils;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
+import okhttp3.MediaType;
+import okhttp3.MultipartBody;
+import okhttp3.RequestBody;
 import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
@@ -54,16 +61,48 @@ public class MeFragment extends Fragment {
     private String token;
     private ApiService apiService;
     private List<String> aiModelList = new ArrayList<>();
-    private static final int REQUEST_CODE_AVATAR = 1001;
+
+    // 核心：替换过时 onActivityResult，使用 ActivityResultLauncher 处理头像选择返回
+    private ActivityResultLauncher<Intent> avatarPickerLauncher;
 
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_me, container, false);
+        // 初始化 ActivityResultLauncher（必须在 View 创建前/创建时完成，确保不丢失回调）
+        initActivityResultLaunchers();
         initView(view);
         initData();
         initListener();
         return view;
+    }
+
+    /**
+     * 初始化 ActivityResultLauncher，替代过时的 onActivityResult，处理头像选择回调
+     */
+    private void initActivityResultLaunchers() {
+        avatarPickerLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    // 校验回调结果有效性
+                    if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                        Uri uri = result.getData().getData();
+                        if (uri != null && getContext() != null) {
+                            // 1. 本地UI预览头像（即时反馈）
+                            ivAvatar.setImageURI(uri);
+
+                            // 2. 调用 FileUtils 将 Uri 转换为 File（兼容 Android 10+ 沙盒机制）
+                            File file = FileUtils.getFileFromUri(getContext(), uri);
+                            if (file != null) {
+                                // 3. 执行头像上传至 OSS 逻辑
+                                uploadAvatar(file);
+                            } else {
+                                Toast.makeText(getContext(), "头像文件转换失败", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                    }
+                }
+        );
     }
 
     private void initView(View view) {
@@ -184,7 +223,7 @@ public class MeFragment extends Fragment {
     }
 
     private void initListener() {
-        // 头像点击
+        // 头像点击：弹出选择对话框（使用 ActivityResultLauncher 启动）
         ivAvatar.setOnClickListener(v -> {
             if (currentUser == null || getContext() == null) return;
             AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
@@ -192,16 +231,19 @@ public class MeFragment extends Fragment {
                     .setItems(new String[]{"从相册选择", "拍照"}, (dialog, which) -> {
                         Intent intent = new Intent();
                         if (which == 0) {
+                            // 从相册选择
                             intent.setAction(Intent.ACTION_PICK);
                             intent.setType("image/*");
                         } else {
+                            // 拍照（注：拍照返回的是 Bitmap，需额外处理，此处保持与相册一致的 Launcher 调用）
                             intent.setAction(MediaStore.ACTION_IMAGE_CAPTURE);
                         }
-                        startActivityForResult(intent, REQUEST_CODE_AVATAR);
+                        // 核心：使用 ActivityResultLauncher 启动意图，替代 startActivityForResult
+                        avatarPickerLauncher.launch(intent);
                     }).show();
         });
 
-        // 编辑个人信息
+        // 编辑个人信息（保留原有逻辑）
         tvEditInfo.setOnClickListener(v -> {
             if (llInfoEditor.getVisibility() == View.GONE) {
                 llInfoEditor.setVisibility(View.VISIBLE);
@@ -212,7 +254,7 @@ public class MeFragment extends Fragment {
             }
         });
 
-        // 保存个人信息
+        // 保存个人信息（保留原有逻辑）
         btnSaveInfo.setOnClickListener(v -> {
             if (currentUser == null || getContext() == null) return;
             String newNickname = etNickname.getText().toString().trim();
@@ -262,7 +304,7 @@ public class MeFragment extends Fragment {
             });
         });
 
-        // API Key输入提示
+        // API Key输入提示（保留原有逻辑）
         etApiKey.setOnFocusChangeListener((v, hasFocus) -> {
             if (!hasFocus && getContext() != null) {
                 String apiKey = etApiKey.getText().toString().trim();
@@ -272,7 +314,7 @@ public class MeFragment extends Fragment {
             }
         });
 
-        // 保存AI配置
+        // 保存AI配置（保留原有逻辑）
         btnSaveAiConfig.setOnClickListener(v -> {
             if (currentUser == null || getContext() == null) return;
             String apiKey = etApiKey.getText().toString().trim();
@@ -289,7 +331,7 @@ public class MeFragment extends Fragment {
             Toast.makeText(getContext(), "AI配置已保存", Toast.LENGTH_SHORT).show();
         });
 
-        // 修改密码
+        // 修改密码（保留原有逻辑）
         tvChangePwd.setOnClickListener(v -> {
             if (getContext() == null) return;
             // 弹出密码修改对话框
@@ -348,7 +390,7 @@ public class MeFragment extends Fragment {
                     .show();
         });
 
-        // 退出登录
+        // 退出登录（保留原有逻辑）
         tvLogout.setOnClickListener(v -> {
             if (getContext() == null) return;
             new AlertDialog.Builder(getContext())
@@ -381,25 +423,80 @@ public class MeFragment extends Fragment {
         });
     }
 
-    // 跳转登录页
+    /**
+     * 核心功能：将头像文件上传至 OSS 服务器，并同步更新用户头像信息
+     * @param file 由 FileUtils 转换得到的头像文件
+     */
+    private void uploadAvatar(File file) {
+        // 校验前置条件（token、上下文、文件有效性）
+        if (token == null || token.isEmpty() || getContext() == null || !file.exists() || file.length() <= 0) {
+            Toast.makeText(getContext(), "头像上传前置条件不满足", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // 1. 构建 Retrofit 上传请求体
+        RequestBody requestFile = RequestBody.create(MediaType.parse("image/*"), file);
+        MultipartBody.Part body = MultipartBody.Part.createFormData("file", file.getName(), requestFile);
+
+        // 2. 调用后端 OSS 上传接口
+        apiService.uploadFile(token, body).enqueue(new Callback<BaseResponse<String>>() {
+            @Override
+            public void onResponse(Call<BaseResponse<String>> call, Response<BaseResponse<String>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().getCode() == 200) {
+                    // 3. 上传成功：获取头像 Url，更新用户对象
+                    String avatarUrl = response.body().getData();
+                    if (currentUser != null && avatarUrl != null && !avatarUrl.isEmpty()) {
+                        currentUser.setAvatarUrl(avatarUrl);
+                        // 4. 同步更新头像信息至后端用户资料
+                        updateUserAvatarToBackend(currentUser);
+                    } else {
+                        Toast.makeText(getContext(), "头像Url获取失败", Toast.LENGTH_SHORT).show();
+                    }
+                } else {
+                    Toast.makeText(getContext(), "头像上传失败：服务器错误", Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<BaseResponse<String>> call, Throwable t) {
+                Toast.makeText(getContext(), "头像上传失败：" + t.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    /**
+     * 同步更新用户头像信息至后端（复用原有 updateUserInfo 接口）
+     * @param user 更新后的用户对象（包含新头像 Url）
+     */
+    private void updateUserAvatarToBackend(User user) {
+        if (token == null || token.isEmpty() || getContext() == null) return;
+
+        apiService.updateUserInfo(token, user).enqueue(new Callback<BaseResponse<Void>>() {
+            @Override
+            public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
+                if (response.isSuccessful() && response.body() != null && response.body().getCode() == 200) {
+                    // 5. 最终反馈：头像更新成功
+                    Toast.makeText(getContext(), "头像更新并同步成功", Toast.LENGTH_SHORT).show();
+                    // 可选：使用 Glide 重新加载网络头像，保证图片显示一致性
+                    Glide.with(MeFragment.this).load(user.getAvatarUrl()).into(ivAvatar);
+                } else {
+                    Toast.makeText(getContext(), "头像同步失败：服务器错误", Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<BaseResponse<Void>> call, Throwable t) {
+                Toast.makeText(getContext(), "头像同步失败：网络错误", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    // 跳转登录页（保留原有逻辑）
     private void jumpToLogin() {
         if (getActivity() == null || getActivity().isFinishing()) return;
         Intent intent = new Intent(getActivity(), LoginActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
         startActivity(intent);
         getActivity().finish();
-    }
-
-    // 处理头像选择返回
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_CODE_AVATAR && resultCode == getActivity().RESULT_OK && data != null && getContext() != null) {
-            Uri uri = data.getData();
-            if (uri != null) {
-                ivAvatar.setImageURI(uri);
-                Toast.makeText(getContext(), "头像已本地更换（后端未实现上传）", Toast.LENGTH_SHORT).show();
-            }
-        }
     }
 }

@@ -33,8 +33,9 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public class ChatService extends Service {
-    private ApiService apiService;
+public class ChatService {}
+        //extends Service {
+    /*private ApiService apiService;
     private Handler mainHandler;
     private final AppDatabase db = AppDatabase.getInstance(this);
     private static final ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
@@ -270,4 +271,4 @@ public class ChatService extends Service {
             return userText;
         }
     }
-}
+}*/

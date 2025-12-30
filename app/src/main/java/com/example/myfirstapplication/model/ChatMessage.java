@@ -32,6 +32,25 @@ public class ChatMessage {
     public Integer status;      // 消息状态（后端原始字段：status）
     public String userId;       // 发送者ID（后端原始字段：user_id，核心判断依据）
 
+    public Integer getMsgType() {
+        return msgType;
+    }
+
+    public void setMsgType(Integer msgType) {
+        this.msgType = msgType;
+    }
+
+    /**
+     * 新增：消息内容类型
+     * 1 = 文本
+     * 2 = 图片
+     */
+    public Integer msgType;
+
+    // 内容类型常量
+    public static final int MSG_TYPE_TEXT = 1;
+    public static final int MSG_TYPE_IMAGE = 2;
+
     // 消息类型常量（与后端对齐，仅用于展示层判断）
     public static final int TYPE_SENT = 1;       // 我方发送
     public static final int TYPE_RECEIVED = 0;   // 对方接收
@@ -44,14 +63,15 @@ public class ChatMessage {
     // Room必需的无参构造
     public ChatMessage() {}
 
-    // 业务构造方法（添加@Ignore避免Room报错）
+    // 业务构造方法 (更新)
     @Ignore
-    public ChatMessage(String friendId, String content, Integer type, Integer status, String userId) {
+    public ChatMessage(String friendId, String content, Integer type, Integer status, String userId, Integer msgType) {
         this.friendId = friendId;
-        this.content = content;
+        this.content = content; // 如果是图片，这里存URL
         this.type = type;
         this.status = status;
         this.userId = userId;
+        this.msgType = msgType;
         this.timestamp = System.currentTimeMillis();
     }
 

@@ -26,7 +26,7 @@ import com.example.myfirstapplication.model.User;
                 FriendRequestEntity.class,
                 User.class
         },
-        version = 5, // 核心修复：版本号从 4 递增到 5（必须大于旧版本）
+        version = 6, // 核心修复：版本号从 4 递增到 5（必须大于旧版本）
         exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {

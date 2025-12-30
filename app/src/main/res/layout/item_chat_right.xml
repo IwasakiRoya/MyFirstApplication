@@ -31,6 +31,16 @@
             android:textColor="#000000"
             android:textSize="16sp" />
 
+        <ImageView
+            android:id="@+id/iv_chat_image"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:maxWidth="200dp"
+            android:maxHeight="200dp"
+            android:scaleType="centerCrop"
+            android:adjustViewBounds="true"/>
+
         <ProgressBar
             android:id="@+id/pb_loading"
             style="?android:attr/progressBarStyleSmall"

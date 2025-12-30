@@ -15,6 +15,7 @@ import com.example.myfirstapplication.model.response.UserResponse;
 
 import java.util.List;
 
+import okhttp3.MultipartBody;
 import retrofit2.Call;
 import retrofit2.http.Body;
 import retrofit2.http.GET;
@@ -93,7 +94,13 @@ public interface ApiService {
     @GET("api/chat/list")
     Call<BaseResponse<List<ChatSummary>>> getChatList(@Header("Authorization") String token);
 
-
+    // 新增：上传文件接口
+    @retrofit2.http.Multipart
+    @POST("api/file/upload")
+    Call<BaseResponse<String>> uploadFile(
+            @Header("Authorization") String token,
+            @retrofit2.http.Part MultipartBody.Part file
+    );
 
     // ========== 好友相关 ==========
     @POST("api/friend/request")
