@@ -2,6 +2,9 @@ package com.example.myfirstapplication.Fragment;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
@@ -55,6 +58,7 @@ public class MeFragment extends Fragment {
     private EditText etNickname, etSignature, etPhone, etApiKey, etAiPrompt;
     private Spinner spAiModel;
     private Button btnSaveInfo, btnSaveAiConfig;
+    private TextView tvCopyUserId;
 
     // 数据
     private User currentUser;
@@ -113,6 +117,8 @@ public class MeFragment extends Fragment {
         tvEditInfo = view.findViewById(R.id.tv_edit_info);
         tvChangePwd = view.findViewById(R.id.tv_change_pwd);
         tvLogout = view.findViewById(R.id.tv_logout);
+        tvCopyUserId = view.findViewById(R.id.tv_copy_user_id);
+
 
         llInfoEditor = view.findViewById(R.id.ll_info_editor);
         etNickname = view.findViewById(R.id.et_nickname);
@@ -223,6 +229,28 @@ public class MeFragment extends Fragment {
     }
 
     private void initListener() {
+
+        // 复制用户ID 点击事件（逻辑完全不变）
+        tvCopyUserId.setOnClickListener(v -> {
+            if (getContext() == null) return;
+            String userIdText = tvUserId.getText().toString().trim();
+            if (userIdText.isEmpty() || !userIdText.contains("：")) {
+                Toast.makeText(getContext(), "无有效用户ID可复制", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // 截取纯ID
+            String pureUserId = userIdText.substring(userIdText.indexOf("：") + 1);
+            if (pureUserId.isEmpty()) {
+                Toast.makeText(getContext(), "用户ID为空", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // 系统剪贴板复制
+            ClipboardManager clipboardManager = (ClipboardManager) getContext().getSystemService(Context.CLIPBOARD_SERVICE);
+            ClipData clipData = ClipData.newPlainText("UserID", pureUserId);
+            clipboardManager.setPrimaryClip(clipData);
+            Toast.makeText(getContext(), "用户ID已复制到剪贴板", Toast.LENGTH_SHORT).show();
+        });
+
         // 头像点击：弹出选择对话框（使用 ActivityResultLauncher 启动）
         ivAvatar.setOnClickListener(v -> {
             if (currentUser == null || getContext() == null) return;

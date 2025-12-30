@@ -79,11 +79,13 @@ public class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     /**
-     * 核心修改：绑定发送方消息，支持图片渲染
+     * 核心修改：绑定发送方消息，支持图片渲染（增加 msgType null 兜底）
      */
     private void bindSentMessage(SentViewHolder holder, ChatMessage msg) {
-        // --- 1. 处理内容显示：区分文字和图片 ---
-        if (msg.getMsgType() == ChatMessage.MSG_TYPE_IMAGE) {
+        // --- 1. 处理内容显示：区分文字和图片（关键：先兜底 msgType null，避免空指针） ---
+        // 提取 msgType，null 则默认转为文本类型（MSG_TYPE_TEXT）
+        int msgType = msg.getMsgType() == null ? ChatMessage.MSG_TYPE_TEXT : msg.getMsgType();
+        if (msgType == ChatMessage.MSG_TYPE_IMAGE) {
             // 是图片消息
             holder.tvContent.setVisibility(View.GONE);  // 隐藏文本框
             holder.ivChatImage.setVisibility(View.VISIBLE); // 显示图片框
@@ -125,11 +127,13 @@ public class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     }
 
     /**
-     * 核心修改：绑定接收方消息，支持图片渲染
+     * 核心修改：绑定接收方消息，支持图片渲染（增加 msgType null 兜底）
      */
     private void bindReceivedMessage(ReceivedViewHolder holder, ChatMessage msg) {
-        // --- 1. 处理内容显示 ---
-        if (msg.getMsgType() == ChatMessage.MSG_TYPE_IMAGE) {
+        // --- 1. 处理内容显示（关键：先兜底 msgType null，避免空指针） ---
+        // 提取 msgType，null 则默认转为文本类型（MSG_TYPE_TEXT）
+        int msgType = msg.getMsgType() == null ? ChatMessage.MSG_TYPE_TEXT : msg.getMsgType();
+        if (msgType == ChatMessage.MSG_TYPE_IMAGE) {
             holder.tvContent.setVisibility(View.GONE);
             holder.ivChatImage.setVisibility(View.VISIBLE);
             Glide.with(holder.itemView.getContext())
@@ -197,6 +201,11 @@ public class ChatAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         this.messageList.clear();
         this.messageList.addAll(newList);
         notifyDataSetChanged();
+    }
+
+    // 补充：添加监听器设置方法，避免后续重发功能空指针
+    public void setOnMessageResendListener(OnMessageResendListener onMessageResendListener) {
+        this.onMessageResendListener = onMessageResendListener;
     }
 
     public interface OnMessageResendListener {

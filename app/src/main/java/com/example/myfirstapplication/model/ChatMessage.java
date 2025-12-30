@@ -33,11 +33,13 @@ public class ChatMessage {
     public String userId;       // 发送者ID（后端原始字段：user_id，核心判断依据）
 
     public Integer getMsgType() {
-        return msgType;
+        // 关键修改：Getter 方法兜底，避免返回 null
+        return msgType == null ? MSG_TYPE_TEXT : msgType;
     }
 
     public void setMsgType(Integer msgType) {
-        this.msgType = msgType;
+        // 关键修改：Setter 方法兜底，禁止传入 null 赋值
+        this.msgType = msgType == null ? MSG_TYPE_TEXT : msgType;
     }
 
     /**
@@ -45,7 +47,8 @@ public class ChatMessage {
      * 1 = 文本
      * 2 = 图片
      */
-    public Integer msgType;
+    // 关键修改：字段初始化，默认赋值为文本类型，避免实例化后为 null
+    public Integer msgType = MSG_TYPE_TEXT;
 
     // 内容类型常量
     public static final int MSG_TYPE_TEXT = 1;
@@ -61,21 +64,27 @@ public class ChatMessage {
     public static final int STATUS_FAILED = 2;    // 失败
 
     // Room必需的无参构造
-    public ChatMessage() {}
+    public ChatMessage() {
+        // 关键修改：无参构造中兜底所有易空 Integer 字段，从数据源头避免 null
+        this.msgType = MSG_TYPE_TEXT;
+        this.type = TYPE_RECEIVED;
+        this.status = STATUS_SUCCESS;
+        this.timestamp = System.currentTimeMillis();
+    }
 
     // 业务构造方法 (更新)
     @Ignore
     public ChatMessage(String friendId, String content, Integer type, Integer status, String userId, Integer msgType) {
         this.friendId = friendId;
         this.content = content; // 如果是图片，这里存URL
-        this.type = type;
-        this.status = status;
+        this.type = type == null ? TYPE_RECEIVED : type; // 兜底 null
+        this.status = status == null ? STATUS_SUCCESS : status; // 兜底 null
         this.userId = userId;
-        this.msgType = msgType;
+        this.msgType = msgType == null ? MSG_TYPE_TEXT : msgType; // 兜底 null，避免传入 null 导致异常
         this.timestamp = System.currentTimeMillis();
     }
 
-    // ========== 全字段Getter/Setter（保持与后端原始字段一致，不做修改） ==========
+    // ========== 全字段Getter/Setter（保持与后端原始字段一致，增加关键兜底） ==========
     public Integer getId() {
         return id;
     }

@@ -49,6 +49,22 @@
                     android:layout_height="wrap_content"
                     android:text="ID：1000"
                     android:textColor="#888888" />
+
+                <!-- 核心修改：用 TextView 做复制按钮（无图片） -->
+                <TextView
+                    android:id="@+id/tv_copy_user_id"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="复制"
+                    android:textSize="12sp"
+                    android:textColor="#2196F3"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:paddingVertical="2dp"
+                    android:paddingHorizontal="6dp"
+                    android:contentDescription="复制用户ID"/>
             </LinearLayout>
 
             <!-- 编辑按钮（右上角） -->
