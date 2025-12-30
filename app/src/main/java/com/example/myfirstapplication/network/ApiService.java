@@ -7,10 +7,12 @@ import com.example.myfirstapplication.model.FriendRequestEntity;
 import com.example.myfirstapplication.model.User;
 import com.example.myfirstapplication.model.request.ChangePwdRequest;
 import com.example.myfirstapplication.model.request.FriendRequest;
+import com.example.myfirstapplication.model.request.GroupAddRequest;
 import com.example.myfirstapplication.model.request.HandleFriendRequest;
 import com.example.myfirstapplication.model.request.LoginRequest;
 import com.example.myfirstapplication.model.response.BaseResponse;
 import com.example.myfirstapplication.model.response.ChangePwdResponse;
+import com.example.myfirstapplication.model.response.GroupResponse;
 import com.example.myfirstapplication.model.response.UserResponse;
 
 import java.util.List;
@@ -123,6 +125,34 @@ public interface ApiService {
     @GET("api/friend/list")
     Call<BaseResponse<List<Friend>>> getFriendList(
             @Header("Authorization") String token
+    );
+
+    // ========== 新增群组相关接口 ==========
+    /**
+     * 搜索群组（根据群组ID）
+     */
+    @GET("api/group/search")
+    Call<BaseResponse<GroupResponse>> searchGroup(
+            @Header("Authorization") String token,
+            @Query("groupId") String groupId
+    );
+
+    /**
+     * 加入群组
+     */
+    @POST("api/group/join")
+    Call<BaseResponse<Void>> joinGroup(
+            @Header("Authorization") String token,
+            @Body GroupAddRequest groupAddRequest
+    );
+
+    /**
+     * 创建群组
+     */
+    @POST("api/group/create")
+    Call<BaseResponse<GroupResponse>> createGroup(
+            @Header("Authorization") String token,
+            @Body GroupAddRequest groupAddRequest
     );
 
     // ========== AI相关（前端保留，后端暂未实现） ==========
