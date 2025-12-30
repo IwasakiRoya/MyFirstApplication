@@ -11,13 +11,12 @@ import com.example.myfirstapplication.model.ChatMessage;
 import com.example.myfirstapplication.model.ChatReadPosition;
 import com.example.myfirstapplication.model.Friend;
 import com.example.myfirstapplication.model.FriendRequestEntity;
-import com.example.myfirstapplication.model.Group; // 新增
-import com.example.myfirstapplication.model.GroupUser; // 新增
 import com.example.myfirstapplication.model.User;
 
 /**
  * 数据库主类（适配所有新Model）
  */
+// 关键修复：添加 @TypeConverters 注解，注册日期转换器
 @TypeConverters(DateTypeConverter.class)
 @Database(
         entities = {
@@ -25,11 +24,9 @@ import com.example.myfirstapplication.model.User;
                 ChatReadPosition.class,
                 Friend.class,
                 FriendRequestEntity.class,
-                User.class,
-                Group.class, // 新增群组实体
-                GroupUser.class // 新增群成员实体
+                User.class
         },
-        version = 7, // 核心：版本号从 6 递增到 7
+        version = 6, // 核心修复：版本号从 4 递增到 5（必须大于旧版本）
         exportSchema = false
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -41,8 +38,6 @@ public abstract class AppDatabase extends RoomDatabase {
     public abstract FriendRequestDao friendRequestDao();
     public abstract UserDao userDao();
     public abstract ChatReadPositionDao chatReadPositionDao();
-    public abstract GroupDao groupDao(); // 新增群组Dao
-    public abstract GroupUserDao groupUserDao(); // 新增群成员Dao
 
     public static AppDatabase getInstance(Context context) {
         if (INSTANCE == null) {
@@ -53,7 +48,7 @@ public abstract class AppDatabase extends RoomDatabase {
                                     AppDatabase.class,
                                     "wechat_db"
                             )
-                            .fallbackToDestructiveMigration() // 自动删除旧数据库重建（开发环境）
+                            .fallbackToDestructiveMigration() // 保留该配置，自动删除旧数据库重建
                             .build();
                 }
             }
