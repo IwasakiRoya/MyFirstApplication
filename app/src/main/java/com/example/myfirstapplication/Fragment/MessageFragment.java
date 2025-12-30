@@ -22,7 +22,9 @@ import com.example.myfirstapplication.Adapter.MessageAdapter;
 import com.example.myfirstapplication.R;
 import com.example.myfirstapplication.activity.ChatActivity;
 import com.example.myfirstapplication.database.AppDatabase;
+import com.example.myfirstapplication.database.ChatDao;
 import com.example.myfirstapplication.model.ChatSummary;
+import com.example.myfirstapplication.model.User;
 import com.example.myfirstapplication.model.response.BaseResponse;
 import com.example.myfirstapplication.network.ApiService;
 import com.example.myfirstapplication.utils.NetworkUtils;
@@ -32,7 +34,10 @@ import com.example.myfirstapplication.utils.TimeFormatUtils;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
 import android.os.Handler;
 
 import retrofit2.Call;
@@ -52,10 +57,13 @@ public class MessageFragment extends Fragment {
     private Handler listRefreshHandler; // 列表刷新处理器
     private String token; // 缓存当前用户Token，避免重复获取
 
-    // 新增：列表轮询相关变量（解决对方发消息不即时刷新问题）
+    // 新增：头像缓存Map，避免重复拉取头像（解决头像闪烁）
+    private Map<String, String> avatarCacheMap = new HashMap<>();
+
+    // 列表轮询相关变量（优化：降低轮询间隔，关闭不必要的轮询，仅保留核心刷新）
     private Handler listPollHandler;
     private Runnable listPollRunnable;
-    private static final long LIST_POLL_INTERVAL = 1000; // 列表轮询间隔（1秒，平衡实时性和性能）
+    private static final long LIST_POLL_INTERVAL = 3000; // 优化：改为3秒，减少刷新频率
     private boolean isListPolling = false; // 轮询开关
 
     @Nullable
@@ -91,11 +99,17 @@ public class MessageFragment extends Fragment {
                     Toast.makeText(getContext(), "好友ID为空，无法跳转", Toast.LENGTH_SHORT).show();
                     return;
                 }
+
+                // 核心修复：跳转聊天页时，标记该好友聊天为已读（同步本地+后端）
+                markChatAsRead(friendId);
+
                 // 3. 执行跳转
                 Intent intent = new Intent(getActivity(), ChatActivity.class);
                 intent.putExtra("friendName", chat.getName());
                 intent.putExtra("friendId", friendId);
-                intent.putExtra("friendAvatar", chat.getAvatarUrl());
+                // 优先使用缓存头像，避免重复加载
+                String avatarUrl = avatarCacheMap.getOrDefault(friendId, chat.getAvatarUrl());
+                intent.putExtra("friendAvatar", avatarUrl);
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(intent);
             }
@@ -105,14 +119,14 @@ public class MessageFragment extends Fragment {
         // 加载数据（优先真实数据）
         loadChatData();
 
-        // 核心修复：初始化广播接收器和列表刷新处理器
+        // 初始化广播接收器和列表刷新处理器
         initChatRefreshReceiver();
         listRefreshHandler = new Handler(Looper.getMainLooper());
 
-        // 新增：初始化列表轮询任务（解决实时刷新问题）
+        // 初始化列表轮询任务（优化：降低频率，移除头像拉取）
         initListPollingTask();
 
-        // 核心修复：正确绑定FAB并设置点击事件
+        // 正确绑定FAB并设置点击事件
         fabAddFriend = view.findViewById(R.id.fab_add_friend);
         fabAddFriend.setOnClickListener(v -> {
             // 调用公共工具类，调起添加好友对话框（复用ContactsFragment的正确逻辑）
@@ -125,7 +139,7 @@ public class MessageFragment extends Fragment {
     }
 
     /**
-     * 新增：初始化列表轮询任务（实时拉取聊天摘要，更新红点和最新消息）
+     * 初始化列表轮询任务（优化：仅拉取列表数据，不处理头像，减少刷新频率）
      */
     private void initListPollingTask() {
         listPollHandler = new Handler(Looper.getMainLooper());
@@ -134,7 +148,7 @@ public class MessageFragment extends Fragment {
             public void run() {
                 // 校验：轮询开启、页面未销毁、已登录
                 if (isListPolling && !isDetached() && !isRemoving() && token != null && !token.isEmpty()) {
-                    // 轮询拉取最新聊天列表
+                    // 轮询拉取最新聊天列表（仅刷新数据，不处理头像）
                     refreshChatList();
                     // 继续下一次轮询
                     listPollHandler.postDelayed(this, LIST_POLL_INTERVAL);
@@ -144,10 +158,10 @@ public class MessageFragment extends Fragment {
     }
 
     /**
-     * 新增：轻量刷新聊天列表（仅拉取数据，不弹错误提示）
+     * 轻量刷新聊天列表（仅拉取数据，不弹错误提示，不处理头像）
      */
     private void refreshChatList() {
-        if (apiService == null || token.isEmpty()) {
+        if (apiService == null || token == null || token.isEmpty()) {
             return;
         }
 
@@ -157,6 +171,7 @@ public class MessageFragment extends Fragment {
                 if (response.isSuccessful() && response.body() != null && response.body().getCode() == 200) {
                     List<ChatSummary> result = response.body().getData();
                     if (result != null && !result.isEmpty()) {
+                        // 调用优化后的方法，仅处理未读计数，不重复拉取头像
                         calculateUnreadCountForChatList(result);
                     }
                 }
@@ -207,7 +222,7 @@ public class MessageFragment extends Fragment {
     }
 
     /**
-     * 核心修复：刷新聊天列表并更新未读小红点（重新拉取最新数据，而非本地缓存）
+     * 刷新聊天列表并更新未读小红点（重新拉取最新数据，而非本地缓存）
      */
     private void refreshChatListWithUnreadBadge() {
         if (getContext() == null || apiService == null || token == null || token.isEmpty()) {
@@ -249,7 +264,10 @@ public class MessageFragment extends Fragment {
     }
 
     /**
-     * 核心修复：计算聊天列表中每个项的未读消息数并更新UI（保留后端数据，本地查询仅兜底）
+     * 核心修复：
+     * 1. 优先信任后端未读计数，本地仅兜底（解决全红BUG）
+     * 2. 头像优先使用缓存，不再轮询拉取（解决头像闪烁）
+     * 3. 优化列表刷新逻辑，避免重复刷新
      */
     private void calculateUnreadCountForChatList(List<ChatSummary> chatList) {
         if (chatList == null || chatList.isEmpty() || myUserId == null || myUserId.isEmpty() || getContext() == null) {
@@ -258,40 +276,74 @@ public class MessageFragment extends Fragment {
 
         DbExecutor.execute(() -> {
             AppDatabase db = AppDatabase.getInstance(getContext());
+            ChatDao chatDao = db.chatDao(); // 获取ChatDao实例
+
             for (ChatSummary summary : chatList) {
                 String friendId = summary.getFriendId();
                 if (friendId != null && !friendId.isEmpty()) {
-                    // 核心修复：保留后端返回的未读数，本地查询仅作为兜底（当后端未读数为0/null时使用）
-                    int localUnreadCount = db.chatDao().getUnreadMsgCount(myUserId, friendId);
-                    if (summary.getUnreadCount() <= 0) {
-                        summary.setUnreadCount(localUnreadCount);
-                    }
+                    // 核心修复1：优先使用后端未读计数，本地仅当后端为0/null时兜底
+                    int backendUnreadCount = summary.getUnreadCount() == 0 ? 0 : summary.getUnreadCount();
+                    int localUnreadCount = chatDao.getUnreadMsgCount(myUserId, friendId);
+                    // 仅当后端未读数为0时，才使用本地计数（避免本地与后端冲突）
+                    summary.setUnreadCount(backendUnreadCount > 0 ? backendUnreadCount : localUnreadCount);
 
-                    // 时间格式化兜底：将后端返回的时间戳转换为可读格式
-                    if (summary.getTime() == null || summary.getTime().isEmpty() || summary.getTime().matches("\\d+")) {
+                    // 核心修复2：时间戳转换兜底，避免空指针
+                    if (summary.getTime() == null || summary.getTime().isEmpty()) {
                         long timestamp = 0;
                         try {
-                            timestamp = summary.getTime() != null ? Long.parseLong(summary.getTime()) : System.currentTimeMillis();
+                            timestamp = summary.getLastMessageTime() != null ? summary.getLastMessageTime() : System.currentTimeMillis();
                         } catch (Exception e) {
                             timestamp = System.currentTimeMillis();
                         }
                         summary.setTime(TimeFormatUtils.formatTimestampToHHmm(timestamp));
                     }
 
-                    // 兜底：头像URL为空时设置空字符串，避免Glide加载异常
-                    if (summary.getAvatarUrl() == null || summary.getAvatarUrl().isEmpty()) {
-                        summary.setAvatarUrl("");
+                    // 核心修复3：头像处理（优先缓存，仅首次拉取，解决闪烁）
+                    String avatarUrl = summary.getAvatarUrl();
+                    // 先从缓存获取
+                    if (avatarCacheMap.containsKey(friendId)) {
+                        summary.setAvatarUrl(avatarCacheMap.get(friendId));
+                    } else {
+                        // 缓存中无数据，且后端头像为空时，才拉取一次（非轮询）
+                        if ((avatarUrl == null || avatarUrl.isEmpty()) && token != null && !token.isEmpty()) {
+                            NetworkUtils.getFriendUserInfo(getContext(), token, friendId, new NetworkUtils.OnGetFriendUserInfoListener() {
+                                @Override
+                                public void onSuccess(User user) {
+                                    if (user != null && user.getAvatarUrl() != null && !user.getAvatarUrl().isEmpty()) {
+                                        // 存入缓存，后续不再拉取
+                                        avatarCacheMap.put(friendId, user.getAvatarUrl());
+                                        summary.setAvatarUrl(user.getAvatarUrl());
+                                        // 主线程刷新列表（仅一次，避免重复）
+                                        if (listRefreshHandler != null) {
+                                            listRefreshHandler.post(() -> {
+                                                adapter.updateData(new ArrayList<>(dataList));
+                                            });
+                                        }
+                                    }
+                                }
+
+                                @Override
+                                public void onError(String errorMsg) {
+                                    // 静默失败，存入空缓存，避免重复请求
+                                    avatarCacheMap.put(friendId, "");
+                                    summary.setAvatarUrl("");
+                                }
+                            });
+                        } else {
+                            // 后端有头像数据，存入缓存
+                            String finalAvatarUrl = avatarUrl == null ? "" : avatarUrl;
+                            avatarCacheMap.put(friendId, finalAvatarUrl);
+                            summary.setAvatarUrl(finalAvatarUrl);
+                        }
                     }
                 }
             }
 
-            // 主线程更新UI（简化逻辑，仅调用Adapter的updateData方法，避免重复刷新）
+            // 主线程更新UI（简化逻辑，仅一次刷新，避免重复）
             if (listRefreshHandler != null) {
-                // 主线程更新UI（简化逻辑，避免重复刷新）
                 listRefreshHandler.post(() -> {
                     dataList.clear();
                     dataList.addAll(chatList);
-                    // 仅调用 updateData 方法，完成数据替换和刷新
                     adapter.updateData(new ArrayList<>(dataList)); // 传入新列表，避免引用传递导致数据混乱
                 });
             }
@@ -299,7 +351,42 @@ public class MessageFragment extends Fragment {
     }
 
     /**
-     * 新增：从本地数据库加载聊天数据（网络失败时兜底）
+     * 核心新增：标记聊天为已读（同步本地数据库+后端，解决未读全红）
+     */
+    private void markChatAsRead(String friendId) {
+        if (getContext() == null || myUserId == null || myUserId.isEmpty() || friendId == null || friendId.isEmpty()) {
+            return;
+        }
+
+        // 1. 本地标记已读（更新阅读时间戳）
+        long currentTime = System.currentTimeMillis();
+        DbExecutor.execute(() -> {
+            AppDatabase db = AppDatabase.getInstance(getContext());
+            db.chatDao().markChatAsRead(myUserId, friendId, currentTime);
+        });
+
+        // 2. 后端标记已读（可选，根据接口调整，确保后端未读计数同步清零）
+        if (apiService != null && token != null && !token.isEmpty()) {
+            // 注：需根据实际后端接口补充markChatAsRead接口调用，此处为占位
+//            apiService.markChatAsRead(token, myUserId, friendId, currentTime).enqueue(new Callback<BaseResponse<Void>>() {
+//                @Override
+//                public void onResponse(Call<BaseResponse<Void>> call, Response<BaseResponse<Void>> response) {
+//                    // 后端标记成功，刷新列表
+//                    if (response.isSuccessful() && response.body() != null && response.body().getCode() == 200) {
+//                        refreshChatList();
+//                    }
+//                }
+//
+//                @Override
+//                public void onFailure(Call<BaseResponse<Void>> call, Throwable t) {
+//                    // 静默失败，本地已标记，不影响用户体验
+//                }
+//            });
+        }
+    }
+
+    /**
+     * 从本地数据库加载聊天数据（网络失败时兜底）
      */
     private void loadLocalChatData() {
         if (getContext() == null || myUserId == null || myUserId.isEmpty()) {
@@ -312,7 +399,7 @@ public class MessageFragment extends Fragment {
             List<ChatSummary> localList = new ArrayList<>();
             ChatSummary summary = new ChatSummary("本地缓存", "暂无最新消息", TimeFormatUtils.formatTimestampToHHmm(System.currentTimeMillis()), R.mipmap.ic_launcher_round);
             summary.setFriendId("local_001");
-            summary.setUnreadCount(0);
+            summary.setUnreadCount(0); // 本地数据未读计数强制为0，避免全红
             localList.add(summary);
 
             // 主线程更新UI
@@ -333,7 +420,7 @@ public class MessageFragment extends Fragment {
         // 1. 确保上下文和广播接收器不为空
         if (getActivity() != null && chatRefreshReceiver != null) {
             try {
-                // 2. 直接调用 Context 的原生 unregisterReceiver() 方法（无需 ContextCompat）
+                // 2. 直接调用 Context 的原生 unregisterReceiver() 方法
                 getActivity().unregisterReceiver(chatRefreshReceiver);
             } catch (Exception ignored) {
                 // 捕获「广播未注册却被注销」的异常，避免崩溃
@@ -349,10 +436,10 @@ public class MessageFragment extends Fragment {
     public void onDestroyView() {
         super.onDestroyView();
 
-        // 核心修复：注销广播接收器，释放资源（直接复用封装方法，无需 ContextCompat）
+        // 注销广播接收器，释放资源
         unregisterChatRefreshReceiver();
 
-        // 新增：停止列表轮询并清理回调
+        // 停止列表轮询并清理回调
         if (isListPolling && listPollHandler != null) {
             isListPolling = false;
             listPollHandler.removeCallbacksAndMessages(null);
@@ -363,6 +450,9 @@ public class MessageFragment extends Fragment {
             listRefreshHandler.removeCallbacksAndMessages(null);
             listRefreshHandler = null;
         }
+
+        // 清空头像缓存，释放内存
+        avatarCacheMap.clear();
     }
 
     // 以下原有方法保持优化（修复数据加载逻辑）
@@ -440,11 +530,12 @@ public class MessageFragment extends Fragment {
         });
     }
 
-    // 新增：页面可见时开启轮询并刷新列表（确保返回消息列表时数据最新）
+    /**
+     * 页面可见时开启轮询并刷新列表（优化：降低轮询频率，减少资源消耗）
+     */
     @Override
     public void onResume() {
         super.onResume();
-        // 开启列表轮询
         if (!isListPolling && token != null && !token.isEmpty()) {
             isListPolling = true;
             if (listPollHandler != null && listPollRunnable != null) {
@@ -458,7 +549,9 @@ public class MessageFragment extends Fragment {
         }
     }
 
-    // 新增：页面不可见时停止轮询（节省资源，避免后台消耗）
+    /**
+     * 页面不可见时停止轮询（节省资源，避免后台消耗）
+     */
     @Override
     public void onPause() {
         super.onPause();

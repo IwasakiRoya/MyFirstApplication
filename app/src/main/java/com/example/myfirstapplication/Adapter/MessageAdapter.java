@@ -49,8 +49,9 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
         holder.tvLastMsg.setText(item.getLastMessage());
         holder.tvTime.setText(item.getTime());
 
-        // ========== 核心修复：适配前后端未读数字段类型（Long → int） ==========
-        long unreadCountLong = Math.max(item.getUnreadCount(), 0);
+        // ========== 核心修复：适配前后端未读数字段类型，避免全红（增加非负校验） ==========
+        long unreadCountLong = item.getUnreadCount() == 0 ? 0 : item.getUnreadCount();
+        unreadCountLong = Math.max(unreadCountLong, 0); // 强制非负，避免负数显示
         int unreadCount = (int) Math.min(unreadCountLong, 99); // 限制最大为99，避免显示异常
 
         if (unreadCount > 0) {
@@ -58,13 +59,15 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
             // 未读数超过99显示"99+"
             holder.tvUnreadBadge.setText(unreadCount > 99 ? "99+" : String.valueOf(unreadCount));
         } else {
-            holder.tvUnreadBadge.setVisibility(View.GONE);
+            holder.tvUnreadBadge.setVisibility(View.GONE); // 未读为0时隐藏红点，解决全红
         }
 
-        // 头像加载逻辑优化
+        // 头像加载逻辑优化（增加Glide缓存策略，解决闪烁）
         RequestOptions options = new RequestOptions()
                 .circleCrop()
-                .error(R.mipmap.ic_launcher_round);
+                .error(R.mipmap.ic_launcher_round)
+                .skipMemoryCache(false) // 启用内存缓存
+                .diskCacheStrategy(com.bumptech.glide.load.engine.DiskCacheStrategy.ALL); // 启用磁盘缓存
 
         if (item.getAvatarUrl() != null && !item.getAvatarUrl().isEmpty()) {
             Glide.with(holder.itemView.getContext())
@@ -124,7 +127,7 @@ public class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.ViewHold
 
     // 核心修复：新增updateData方法，确保列表数据替换后正确刷新
     public void updateData(List<ChatSummary> newList) {
-        this.list = newList != null ? newList : new ArrayList<>(); // 兜底空列表
+        this.list = newList != null ? newList : new ArrayList<>();
         notifyDataSetChanged(); // 单次刷新即可，无需额外调用
     }
 }
